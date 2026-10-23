@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CRM – Komisja ds. Współprac Zewnętrznych SS UWr</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d2350'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Georgia' font-size='13' font-weight='700' fill='%23e3b04b'%3ESS%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,600;6..72,700&family=Schibsted+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+</head>
+<body>
+  <div id="auth" hidden></div>
+  <div id="app" hidden>
+    <div class="band"><div class="band-in">
+      <div class="mark" aria-hidden="true"><span>SS<small>UWr</small></span></div>
+      <div class="org"><b>CRM · Komisja ds. Współprac Zewnętrznych</b><span>Samorząd Studentów Uniwersytetu Wrocławskiego</span></div>
+      <div class="band-right"><span class="season">2026/27</span>
+        <button class="who" data-go="profil"><span id="whoAv"></span><span><span id="whoName"></span><br><span class="role" id="whoRole"></span></span></button></div>
+    </div></div>
+    <div class="shell">
+      <nav class="rail" id="rail" aria-label="Sekcje">
+        <button data-go="pulpit"><span class="ico">◧</span>Pulpit</button>
+        <button data-go="zadania"><span class="ico">✓</span>Do zrobienia<span class="badge" id="bTodo" hidden>0</span></button>
+        <button data-go="firmy"><span class="ico">▤</span>Firmy</button>
+        <button data-go="kampanie"><span class="ico">✉</span>Kampanie</button>
+        <button data-go="szablony"><span class="ico">¶</span>Szablony</button>
+        <button data-go="struktura"><span class="ico">⚇</span>Struktura i zespoły</button>
+        <button data-go="narzedzia"><span class="ico">⌕</span>Szukanie leadów</button>
+        <hr>
+        <button data-go="profil"><span class="ico">●</span>Mój profil</button>
+        <button data-go="ustawienia" data-admin hidden><span class="ico">⚙</span>Ustawienia</button>
+      </nav>
+      <main id="main"></main>
+    </div>
+  </div>
+  <div id="layer"></div>
+  <div class="toast" id="toast" hidden role="status"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
