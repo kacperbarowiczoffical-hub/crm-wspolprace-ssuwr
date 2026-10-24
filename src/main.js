@@ -26,7 +26,8 @@ function domainOk(email){
 function loginScreen(msg){
   authScreen(`<h1>Zaloguj się</h1><p class="sub">Użyj adresu uczelnianego (${esc((S.cfg.allowed_domains||[]).map(d => '@' + d).join(', '))}). Wyślemy Ci jednorazowy kod i link – bez hasła.</p>
     <form id="fLogin" class="stack"><div class="field"><label class="lbl" for="lEmail">Adres e-mail</label><input type="email" id="lEmail" autocomplete="email" required placeholder="imie.nazwisko@uwr.edu.pl"></div>
-    <button class="btn pri" type="submit" id="lBtn">Wyślij kod logowania</button><p class="hint" id="lMsg">${esc(msg || '')}</p></form>`);
+    <button class="btn pri" type="submit" id="lBtn">Wyślij kod logowania</button><p class="hint" id="lMsg">${esc(msg || '')}</p>
+    <p class="hint"><a href="#" id="lPassLink">Mam hasło – zaloguj hasłem</a></p></form>`);
   $('fLogin').addEventListener('submit', async e => {
     e.preventDefault();
     const email = $('lEmail').value.trim().toLowerCase();
@@ -36,6 +37,21 @@ function loginScreen(msg){
     $('lBtn').disabled = false;
     if (error) { $('lMsg').textContent = /database error|uczelnian/i.test(error.message) ? 'Logowanie tylko adresem uczelnianym.' : /rate|seconds/i.test(error.message) ? 'Za dużo prób – odczekaj chwilę i spróbuj ponownie.' : 'Nie udało się wysłać maila: ' + error.message; return; }
     codeScreen(email);
+  });
+  $('lPassLink').addEventListener('click', e => { e.preventDefault(); passwordScreen($('lEmail').value.trim().toLowerCase()); });
+}
+function passwordScreen(email){
+  authScreen(`<h1>Zaloguj się hasłem</h1><p class="sub">Dla kont, którym administrator ustawił hasło.</p>
+    <form id="fPass" class="stack"><div class="field"><label class="lbl" for="pEmail">Adres e-mail</label><input type="email" id="pEmail" autocomplete="username" required value="${esc(email || '')}"></div>
+    <div class="field"><label class="lbl" for="pPass">Hasło</label><input type="password" id="pPass" autocomplete="current-password" required></div>
+    <button class="btn pri" type="submit" id="pBtn">Zaloguj</button><p class="hint" id="pMsg"><a href="#" id="pBack">Wróć do logowania kodem z maila</a></p></form>`);
+  $('pBack').addEventListener('click', e => { e.preventDefault(); loginScreen(); });
+  $('fPass').addEventListener('submit', async e => {
+    e.preventDefault(); $('pBtn').disabled = true;
+    const { error } = await sb.auth.signInWithPassword({email:$('pEmail').value.trim().toLowerCase(), password:$('pPass').value});
+    $('pBtn').disabled = false;
+    if (error) { $('pMsg').textContent = 'Nieprawidłowy e-mail albo hasło.'; return; }
+    location.reload();
   });
 }
 function codeScreen(email){

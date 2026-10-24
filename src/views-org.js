@@ -96,8 +96,20 @@ V.profil = {
   html(){
     const m = S.me;
     return `<div class="vhead"><div><h1>Mój profil</h1><p class="sub">Dane do podpisu i do przenoszenia wiadomości do Outlooka. Rola: <b>${esc(ROLES[m.role])}</b>${myTeams().length ? ' · zespoły: ' + esc(myTeams().map(t => t.name).join(', ')) : ''}.</p></div><button class="btn" data-act="logout">Wyloguj</button></div>
-      <div class="box">${profileFields(m)}<div class="row"><button class="btn pri" data-act="saveProfile">Zapisz profil</button></div></div>`;
+      <div class="box">${profileFields(m)}<div class="row"><button class="btn pri" data-act="saveProfile">Zapisz profil</button></div></div>
+      <div class="box"><h3>Hasło (opcjonalnie)</h3><p class="hint">Możesz logować się kodem z maila albo hasłem. Ustaw lub zmień hasło – co najmniej 8 znaków.</p>
+        <div class="fgrid"><div class="field"><label class="lbl" for="pNew">Nowe hasło</label><input type="password" id="pNew" autocomplete="new-password"></div>
+        <div class="field"><label class="lbl" for="pNew2">Powtórz hasło</label><input type="password" id="pNew2" autocomplete="new-password"></div></div>
+        <div class="row"><button class="btn" data-act="setPassword">Zapisz hasło</button></div></div>`;
   }
+};
+A.setPassword = async () => {
+  const a = $('pNew').value, b = $('pNew2').value;
+  if (a.length < 8) return toast('Hasło musi mieć co najmniej 8 znaków.');
+  if (a !== b) return toast('Hasła się różnią.');
+  const { error } = await sb.auth.updateUser({password:a});
+  if (error) return toast('Nie udało się zmienić hasła: ' + error.message);
+  $('pNew').value = ''; $('pNew2').value = ''; toast('Zapisano nowe hasło');
 };
 export function profileFields(m){
   return `<div class="fgrid">
