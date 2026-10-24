@@ -19,7 +19,10 @@ function authScreen(html){
   $('app').hidden = true; $('auth').hidden = false;
   $('auth').innerHTML = `<div class="auth-card"><div class="org-line"><div class="mark" aria-hidden="true"><span>SS<small>UWr</small></span></div><div class="org"><b>CRM ${esc(CFG.org)}</b><span>${esc(CFG.orgFull)} · ${esc(CFG.season)}</span></div></div>${html}</div>`;
 }
-function domainOk(email){ const d = email.split('@')[1] || ''; return (S.cfg.allowed_domains || []).some(x => d === x || d.endsWith('.' + x)); }
+function domainOk(email){
+  const d = email.split('@')[1] || '';
+  return (S.cfg.allowed_domains || []).some(x => d === x || d.endsWith('.' + x)) || (S.cfg.allowed_emails || []).some(x => x.toLowerCase() === email);
+}
 function loginScreen(msg){
   authScreen(`<h1>Zaloguj się</h1><p class="sub">Użyj adresu uczelnianego (${esc((S.cfg.allowed_domains||[]).map(d => '@' + d).join(', '))}). Wyślemy Ci jednorazowy kod i link – bez hasła.</p>
     <form id="fLogin" class="stack"><div class="field"><label class="lbl" for="lEmail">Adres e-mail</label><input type="email" id="lEmail" autocomplete="email" required placeholder="imie.nazwisko@uwr.edu.pl"></div>

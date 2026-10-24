@@ -9,7 +9,8 @@ create extension if not exists pgcrypto;
 create table if not exists public.app_config (
   id int primary key default 1 check (id = 1),
   allowed_domains text[] not null default array['uwr.edu.pl'],
-  org_name text not null default 'Komisja ds. Współprac Zewnętrznych'
+  org_name text not null default 'Komisja ds. Współprac Zewnętrznych',
+  allowed_emails text[] not null default '{}'   -- pojedyncze adresy spoza domen (np. konto admina)
 );
 insert into public.app_config (id) values (1) on conflict do nothing;
 
@@ -154,7 +155,8 @@ $$;
 create or replace function public.handle_new_user_guard() returns trigger language plpgsql security definer set search_path = public as $$
 declare dom text := lower(split_part(coalesce(new.email,''), '@', 2)); ok boolean;
 begin
-  select exists (select 1 from app_config c, unnest(c.allowed_domains) d where dom = lower(d) or dom like '%.' || lower(d)) into ok;
+  select exists (select 1 from app_config c, unnest(c.allowed_domains) d where dom = lower(d) or dom like '%.' || lower(d))
+      or exists (select 1 from app_config c, unnest(c.allowed_emails) e where lower(e) = lower(new.email)) into ok;
   if not ok then
     raise exception 'Logowanie tylko adresem uczelnianym (%).', (select array_to_string(allowed_domains, ', ') from app_config);
   end if;
