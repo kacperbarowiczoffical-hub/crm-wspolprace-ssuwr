@@ -4,8 +4,27 @@ import { S, V, A, $, esc, enc, fold, keyOf, bigrams, dice, pySlug, todayISO, fmt
   openModal, closeLayer, optList, peopleOpts, stagePill, sb, dbErr, prep, rebuildIndex, CFG } from './core.js';
 import { catsFor, firmCard, myQueue } from './views-work.js';
 
+/* ================= WIĘCEJ ================= */
+V.wiecej = {
+  html(){
+    const tiles = [
+      ['pulpit','Statystyki komisji','Wyniki z ostatnich 30 dni i ostatnie kontakty'],
+      ['narzedzia','Szukanie nowych firm','Sprawdź, czy firma jest w bazie, znajdź nowe firmy i maile'],
+      ['szablony','Szablony wiadomości','Gotowe maile i wiadomości do social mediów'],
+      ['struktura','Zespoły i ludzie', isAdmin() ? 'Akceptuj nowe osoby, twórz zespoły, nadawaj role' : 'Kto jest w jakim zespole'],
+      ['profil','Mój profil','Imię, podpis maila, hasło'],
+      ...(isAdmin() ? [['ustawienia','Ustawienia','Import firm z Excela, eksport, domeny logowania']] : [])
+    ];
+    const pend = isAdmin() ? [...S.profiles.values()].filter(p => p.status === 'pending').length : 0;
+    return `<div class="vhead"><div><h1>Więcej</h1></div></div>
+      <div class="tiles">${tiles.map(([v,t,d]) => `<button class="tile" data-go="${v}"><b>${esc(t)}${v === 'struktura' && pend ? ` <span class="badge">${pend}</span>` : ''}</b><span>${esc(d)}</span></button>`).join('')}</div>
+      <button class="btn ghost" data-act="logout">Wyloguj</button>`;
+  }
+};
+
 /* ================= STRUKTURA: administratorzy → liderzy → zespoły ================= */
 V.struktura = {
+  nav:'wiecej',
   html(){
     return `<div class="vhead"><div><h1>Struktura komisji</h1><p class="sub">Administratorzy główni zarządzają całą komisją. Liderzy prowadzą zespoły, a każdy zespół odpowiada za jedną lub kilka kategorii firm.</p></div>${isAdmin() ? `<button class="btn pri" data-act="teamNew">+ Nowy zespół</button>` : ''}</div>
       <div id="sPending"></div>
@@ -93,6 +112,7 @@ A.teamDel = async () => { const { error } = await sb.from('teams').delete().eq('
 
 /* ================= PROFIL ================= */
 V.profil = {
+  nav:'wiecej',
   html(){
     const m = S.me;
     return `<div class="vhead"><div><h1>Mój profil</h1><p class="sub">Dane do podpisu i do przenoszenia wiadomości do Outlooka. Rola: <b>${esc(ROLES[m.role])}</b>${myTeams().length ? ' · zespoły: ' + esc(myTeams().map(t => t.name).join(', ')) : ''}.</p></div><button class="btn" data-act="logout">Wyloguj</button></div>
@@ -143,6 +163,7 @@ const GQ = q => 'https://www.google.com/search?q=' + enc(q);
 const LNK = (h, t, s) => `<a href="${esc(h)}" target="_blank" rel="noopener"><b>${esc(t)}</b><small>${esc(s)}</small></a>`;
 const tagOf = s => fold(s).replace(/[^a-z0-9]/g,'');
 V.narzedzia = {
+  nav:'wiecej',
   html(){
     const t = S.ui.nt = S.ui.nt || 'check';
     return `<div class="vhead"><div><h1>Szukanie leadów</h1><p class="sub">Sprawdź, czy firma jest już w bazie, znajdź nowe firmy i ich kontakty.</p></div></div>
@@ -219,6 +240,7 @@ function guideHTML(){
 
 /* ================= USTAWIENIA (admin): import i domeny ================= */
 V.ustawienia = {
+  nav:'wiecej',
   html(){
     if (!isAdmin()) return `<div class="empty">Tylko dla administratorów głównych.</div>`;
     return `<div class="vhead"><div><h1>Ustawienia</h1><p class="sub">Import firm z arkusza i dozwolone domeny logowania.</p></div></div>

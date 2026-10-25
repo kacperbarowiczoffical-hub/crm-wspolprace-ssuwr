@@ -11,8 +11,8 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]');
   if (a && A[a.dataset.act]) { if (a.tagName !== 'INPUT') e.preventDefault(); A[a.dataset.act](a, e); }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('layer').innerHTML) closeLayer(); });
-A.close = () => closeLayer();
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('layer').innerHTML) { S.ui.flow = false; closeLayer(); } });
+A.close = () => { S.ui.flow = false; closeLayer(); };
 
 /* ---------- ekrany logowania ---------- */
 function authScreen(html){
@@ -98,7 +98,7 @@ async function boot(){
   subscribeRealtime();
   const [view, arg] = location.hash.replace(/^#/, '').split('/');
   let start = view; if (!start) { try { start = localStorage.getItem('crm-view'); } catch(e){} }
-  go(V[start] ? start : 'pulpit', arg ? decodeURIComponent(arg) : undefined);
+  go(V[start] && start !== 'pulpit' ? start : 'zadania', arg ? decodeURIComponent(arg) : undefined);
   if (!S.me.full_name) { toast('Uzupełnij swój profil'); go('profil'); }
 }
 boot();

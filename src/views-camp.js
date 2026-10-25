@@ -1,4 +1,4 @@
-import { S, V, A, $, esc, fold, todayISO, addDays, fmtDay, emailsIn, igHandle, socialUrl, toast, copyText, STAGES, STAGE, CH, SECTORS, VARS, PRESETS,
+import { S, V, A, $, esc, fold, todayISO, addDays, fmtDay, emailsIn, igHandle, socialUrl, toast, copyText, STAGES, STAGES_UI, stageGroup, STAGE, CH, SECTORS, VARS, PRESETS,
   isAdmin, isLead, ledTeams, teamMembers, inTeamScope, pname, pfirst, go, refresh, refreshNow, openModal, closeLayer, optList, peopleOpts, stagePill, chTag,
   updateFirm, setTarget, allTpls, tplById, sb, dbErr, pathPrompt, parsePathAnswer } from './core.js';
 import { campRow, pathHTML, tState, catsFor, promptModal } from './views-work.js';
@@ -80,7 +80,7 @@ function ncState(){
   const base = S.arg && S.camps.get(S.arg), teams = ledTeams();
   S.ui.nc = {forCamp:S.arg || null, name: base ? base.name : '', goal: base ? base.goal : '', start: todayISO(), perDay:8,
     team: base ? (base.team_id || '') : (teams[0] ? teams[0].id : ''), steps: JSON.parse(JSON.stringify(base ? base.steps : PRESETS.standard.steps)),
-    f:{scope:true, sec:'', cat:'', z:'', stages:['nowa','kontakt','pozniej'], need:'any', excl:true, free:true, q:''}, removed:new Set(), people:null, mode:'owner'};
+    f:{scope:true, sec:'', cat:'', z:'', stages:['nowa','wyslano','pozniej'], need:'any', excl:true, free:true, q:''}, removed:new Set(), people:null, mode:'owner'};
   return S.ui.nc;
 }
 function ncTeam(){ const n = S.ui.nc; return n.team ? S.teams.get(n.team) : null; }
@@ -89,7 +89,7 @@ function ncAudience(){
   const busy = new Set(); if (f.excl) for (const [cid, m] of S.targets){ const c = S.camps.get(cid); if (c && c.status === 'active') for (const [fid, t] of m) if (t.state === 'active' || t.state === 'waiting') busy.add(fid); }
   const inThis = n.forCamp ? new Set((S.targets.get(n.forCamp) || new Map()).keys()) : new Set();
   const q = fold(f.q).trim().split(/\s+/).filter(Boolean);
-  return S.list.filter(x => (!f.scope || !team || inTeamScope(x, team)) && (!f.sec || x.sector === f.sec) && (!f.cat || x.category === f.cat) && (!f.z || x.reach === f.z) && f.stages.includes(x.stage)
+  return S.list.filter(x => (!f.scope || !team || inTeamScope(x, team)) && (!f.sec || x.sector === f.sec) && (!f.cat || x.category === f.cat) && (!f.z || x.reach === f.z) && f.stages.includes(stageGroup(x.stage))
     && (f.need !== 'email' || emailsIn(x.email).length) && (f.need !== 'social' || x.instagram || x.facebook || x.tiktok) && (f.need !== 'any' || emailsIn(x.email).length || x.instagram || x.facebook || x.phone)
     && (!f.free || !x.owner_id || (team && teamMembers(team).includes(x.owner_id))) && !busy.has(x.id) && !inThis.has(x.id) && !n.removed.has(x.id) && q.every(w => x._t.includes(w)));
 }
@@ -105,11 +105,14 @@ V.nowa = {
         <div class="field full"><label class="lbl" for="ncGoal">Co proponujemy firmie ({{cel}} w wiadomościach)</label><textarea id="ncGoal" rows="3" placeholder="np. Szukamy partnerów nagród do konkursu na wydarzeniu dla studentów. W zamian: logo na plakatach, oznaczenie w relacjach i stoisko na miejscu.">${esc(n.goal)}</textarea></div>
         <div class="field"><label class="lbl" for="ncTeamSel">Zespół</label><select id="ncTeamSel">${isAdmin() ? '<option value="">— bez zespołu (cała komisja) —</option>' : ''}${optList(teams.map(t => [t.id, t.name]), n.team)}</select></div>
       </div></div>
-      <div class="box"><div class="row between"><h3>2 · Ścieżka kontaktu</h3><div class="row"><select id="ncPreset" style="width:auto"><option value="">Wczytaj gotową ścieżkę…</option>${optList(Object.entries(PRESETS).map(([k,p]) => [k, p.l]), '')}</select><button class="btn" data-act="ncPrompt">✦ Prompt do AI na treści</button></div></div>
+      <div class="box"><h3>2 · Jak kontaktujemy firmy</h3><div id="ncPathSum"></div>
+        <details class="more"><summary>Zmień kroki i treści wiadomości</summary>
+        <div class="row"><select id="ncPreset" style="width:auto"><option value="">Wczytaj gotową ścieżkę…</option>${optList(Object.entries(PRESETS).map(([k,p]) => [k, p.l]), '')}</select><button class="btn" data-act="ncPrompt">✦ Prompt do AI na treści</button></div>
         <div class="vars">${VARS.map(v => `<code data-act="insVar" data-v="${v}" title="Wstaw w ostatnio edytowane pole">{{${v}}}</code>`).join('')}</div>
-        <div class="steps" id="ncSteps"></div><button class="btn" data-act="ncAddStep">+ Dodaj krok</button></div>`}
+        <div class="steps" id="ncSteps"></div><button class="btn" data-act="ncAddStep">+ Dodaj krok</button></details></div>`}
       <div class="box"><h3>${adding ? '1' : '3'} · Firmy</h3>
         <label class="chk"><input type="checkbox" id="naScope" ${n.f.scope ? 'checked' : ''}> tylko kategorie zespołu <span class="hint" id="naScopeInfo"></span></label>
+        <details class="more"><summary>Zawęź firmy (sektor, kategoria, etap, kontakt)</summary>
         <div class="filters">
           <div class="field"><label class="lbl" for="naQ">Szukaj</label><input type="search" id="naQ" value="${esc(n.f.q)}" placeholder="nazwa, kategoria, adres…"></div>
           <div class="field"><label class="lbl" for="naSec">Sektor</label><select id="naSec"><option value="">Wszystkie</option>${optList(SECTORS.map(s => [s,s]), n.f.sec)}</select></div>
@@ -117,19 +120,20 @@ V.nowa = {
           <div class="field"><label class="lbl" for="naZ">Zasięg</label><select id="naZ">${optList([['','Wszędzie'],['Wrocław','Wrocław'],['Polska','Ogólnopolskie']], n.f.z)}</select></div>
           <div class="field"><label class="lbl" for="naNeed">Wymagany kontakt</label><select id="naNeed">${optList([['any','jakikolwiek'],['email','ma e-mail'],['social','ma social media'],['','bez wymagań']], n.f.need)}</select></div>
         </div>
-        <div class="row" id="naStages">${STAGES.map(s => `<label class="chk"><input type="checkbox" value="${s.id}" ${n.f.stages.includes(s.id) ? 'checked' : ''}> ${esc(s.l)}</label>`).join('')}</div>
+        <div class="row" id="naStages">${STAGES_UI.map(s => `<label class="chip"><input type="checkbox" value="${s.id}" ${n.f.stages.includes(s.id) ? 'checked' : ''}> ${esc(s.l)}</label>`).join('')}</div>
         <label class="chk"><input type="checkbox" id="naExcl" ${n.f.excl ? 'checked' : ''}> pomiń firmy w toku w innej aktywnej kampanii</label>
         <label class="chk"><input type="checkbox" id="naFree" ${n.f.free ? 'checked' : ''}> pomiń firmy prowadzone przez osoby spoza zespołu</label>
+        </details>
         <div class="row between"><b id="naCount"></b><span class="hint">„×” wyklucza firmę.</span></div>
         <div id="naList" class="list" style="max-height:420px;overflow-y:auto"></div></div>
       <div class="box"><h3>${adding ? '2' : '4'} · Ludzie i tempo</h3>
         <div class="row" id="ncPeople"></div>
-        <div class="fgrid">
+        <details class="more"><summary>Tempo i podział firm</summary><div class="fgrid">
           <div class="field"><label class="lbl" for="ncMode">Podział firm</label><select id="ncMode">${optList([['owner','Kto już prowadzi firmę, ten ją dostaje; resztę po równo'],['even','Po równo między wybranych']], n.mode)}</select></div>
           <div class="field"><label class="lbl" for="ncPer">Nowych firm dziennie na osobę</label><input type="number" id="ncPer" min="1" max="100" value="${n.perDay}"></div>
           <div class="field"><label class="lbl" for="ncStart">Start</label><input type="date" id="ncStart" value="${esc(n.start)}"></div>
         </div>
-        <p class="hint">Osoba, która dostaje firmę, prowadzi kontakt z nią w całości i zostaje jej opiekunem.</p></div>
+        </details><p class="hint">Każda osoba dostaje kilka nowych firm dziennie i prowadzi każdą z nich w całości (mail + social media).</p></div>
       <div class="row"><button class="btn pri" id="ncBtn" data-act="ncCreate">${adding ? 'Dodaj firmy' : 'Utwórz kampanię'}</button><span class="hint" id="ncProg"></span></div>`;
   },
   parts:{
@@ -145,6 +149,7 @@ V.nowa = {
         ${s.channels.some(c => CH[c].kind === 'call') ? `<div class="field"><label class="lbl">Skrypt rozmowy / wizyty</label><textarea rows="5" data-sf="script" data-i="${i}">${esc(s.script||'')}</textarea></div>` : ''}
       </div>`).join('');
     },
+    ncPathSum(){ const n = S.ui.nc; if (!n || n.forCamp) return ''; return `<div class="path big">${n.steps.map(st => `<span>Dzień ${st.day}: ${st.channels.map(c => esc(CH[c].l)).join(' + ')}</span>`).join('→')}</div>`; },
     ncPeople(){
       const n = S.ui.nc; if (!n) return ''; const ids = ncPeople();
       return ids.length ? ids.map(id => `<label class="chip"><input type="checkbox" data-person="${esc(id)}" ${n.people.has(id) ? 'checked' : ''}> ${esc(pname(id))}</label>`).join('') : `<span class="hint">W zespole nie ma jeszcze ludzi – dodaj ich w zakładce Struktura.</span>`;
@@ -169,10 +174,10 @@ V.nowa = {
       $('ncName').addEventListener('input', e => n.name = e.target.value);
       $('ncGoal').addEventListener('input', e => n.goal = e.target.value);
       $('ncTeamSel').addEventListener('input', e => { n.team = e.target.value; $('ncPeople').innerHTML = V.nowa.parts.ncPeople(); upd(); });
-      $('ncPreset').addEventListener('input', e => { const p = PRESETS[e.target.value]; if (!p) return; n.steps = JSON.parse(JSON.stringify(p.steps)); $('ncSteps').innerHTML = V.nowa.parts.ncSteps(); e.target.value = ''; });
+      $('ncPreset').addEventListener('input', e => { const p = PRESETS[e.target.value]; if (!p) return; n.steps = JSON.parse(JSON.stringify(p.steps)); $('ncSteps').innerHTML = V.nowa.parts.ncSteps(); $('ncPathSum').innerHTML = V.nowa.parts.ncPathSum(); e.target.value = ''; });
       const st = $('ncSteps');
-      st.addEventListener('input', e => { const el = e.target, i = +el.dataset.i; if (el.dataset.sf) n.steps[i][el.dataset.sf] = el.dataset.sf === 'day' ? Math.max(0, +el.value || 0) : el.value; });
-      st.addEventListener('change', e => { const el = e.target; if (el.dataset.ch) { const s = n.steps[+el.dataset.i]; s.channels = el.checked ? [...new Set([...s.channels, el.dataset.ch])] : s.channels.filter(c => c !== el.dataset.ch); if (!s.channels.length) s.channels = ['email']; st.innerHTML = V.nowa.parts.ncSteps(); } });
+      st.addEventListener('input', e => { const el = e.target, i = +el.dataset.i; if (el.dataset.sf) n.steps[i][el.dataset.sf] = el.dataset.sf === 'day' ? Math.max(0, +el.value || 0) : el.value; if (el.dataset.sf === 'day') $('ncPathSum').innerHTML = V.nowa.parts.ncPathSum(); });
+      st.addEventListener('change', e => { const el = e.target; if (el.dataset.ch) { const s = n.steps[+el.dataset.i]; s.channels = el.checked ? [...new Set([...s.channels, el.dataset.ch])] : s.channels.filter(c => c !== el.dataset.ch); if (!s.channels.length) s.channels = ['email']; st.innerHTML = V.nowa.parts.ncSteps(); $('ncPathSum').innerHTML = V.nowa.parts.ncPathSum(); } });
       st.addEventListener('focusin', e => { if (e.target.matches('textarea,input[type=text]')) S.ui.lastField = e.target; });
     }
     $('ncMode').addEventListener('input', e => n.mode = e.target.value);
@@ -181,15 +186,15 @@ V.nowa = {
   }
 };
 A.insVar = el => { const f = S.ui.lastField; if (!f) { toast('Kliknij najpierw w pole treści'); return; } const v = `{{${el.dataset.v}}}`, s = f.selectionStart ?? f.value.length; f.value = f.value.slice(0,s) + v + f.value.slice(f.selectionEnd ?? s); f.dispatchEvent(new Event('input', {bubbles:true})); f.focus(); };
-A.ncAddStep = () => { const n = S.ui.nc, last = n.steps[n.steps.length-1]; n.steps.push({day: last ? last.day + 4 : 0, channels:['email','ig'], label:'Kolejny kontakt', subject:'', body:'', dm:'', script:''}); $('ncSteps').innerHTML = V.nowa.parts.ncSteps(); };
-A.ncDelStep = el => { const n = S.ui.nc; if (n.steps.length < 2) { toast('Ścieżka musi mieć co najmniej jeden krok'); return; } n.steps.splice(+el.dataset.i, 1); $('ncSteps').innerHTML = V.nowa.parts.ncSteps(); };
+A.ncAddStep = () => { const n = S.ui.nc, last = n.steps[n.steps.length-1]; n.steps.push({day: last ? last.day + 4 : 0, channels:['email','ig'], label:'Kolejny kontakt', subject:'', body:'', dm:'', script:''}); $('ncSteps').innerHTML = V.nowa.parts.ncSteps(); $('ncPathSum').innerHTML = V.nowa.parts.ncPathSum(); };
+A.ncDelStep = el => { const n = S.ui.nc; if (n.steps.length < 2) { toast('Ścieżka musi mieć co najmniej jeden krok'); return; } n.steps.splice(+el.dataset.i, 1); $('ncSteps').innerHTML = V.nowa.parts.ncSteps(); $('ncPathSum').innerHTML = V.nowa.parts.ncPathSum(); };
 A.naRemove = el => { S.ui.nc.removed.add(el.dataset.id); $('naList').innerHTML = V.nowa.parts.naList(); };
 A.ncPrompt = () => {
   const n = S.ui.nc; if (!n.goal.trim()) { toast('Najpierw opisz, co proponujemy firmie.'); return; }
   const back = () => { closeLayer(); };
   promptModal('Prompt do AI – treści całej ścieżki', pathPrompt(n.name, n.goal, n.steps), 'Wklej tutaj całą odpowiedź AI', ans => {
     const r = parsePathAnswer(ans); let hit = 0;
-    r.forEach((x, i) => { const s = n.steps[i]; if (!s || !x) return; if (x.subject) s.subject = x.subject; if (x.body) s.body = x.body; if (x.dm) s.dm = x.dm; if (x.script) s.script = x.script; hit++; });
+    r.forEach((x, i) => { const st = n.steps[i]; if (!st || !x) return; if (x.subject) st.subject = x.subject; if (x.body) st.body = x.body; if (x.dm) st.dm = x.dm; if (x.script) st.script = x.script; hit++; });
     closeLayer(); $('ncSteps').innerHTML = V.nowa.parts.ncSteps();
     toast(hit ? `Wstawiono treści do ${hit} kroków – przeczytaj je przed startem` : 'Nie rozpoznałem formatu odpowiedzi – wklej treści ręcznie');
   }, back);
@@ -214,7 +219,7 @@ A.ncCreate = async el => {
     if (!who) { who = people[rr % people.length]; rr++; }
     const day = Math.floor(load[who] / Math.max(1, n.perDay)); load[who]++;
     targets.push({campaign_id:cid, firm_id:f.id, assignee:who, step:0, due:addDays(n.start || todayISO(), day), state:'active'});
-    if (f.owner_id !== who || f.stage === 'nowa') owners.push([f.id, who, f.stage === 'nowa' ? 'kontakt' : f.stage]);
+    if (f.owner_id !== who) owners.push([f.id, who, f.stage]);
   }
   for (let i = 0; i < targets.length; i += 200){
     const { error } = await sb.from('campaign_targets').upsert(targets.slice(i, i + 200), {onConflict:'campaign_id,firm_id'});
@@ -231,6 +236,7 @@ A.ncCreate = async el => {
 
 /* ================= SZABLONY ================= */
 V.szablony = {
+  nav:'wiecej',
   html(){ return `<div class="vhead"><div><h1>Szablony</h1><p class="sub">Gotowe treści maili, wiadomości w social mediach i rozmów. Zmienne w {{nawiasach}} podstawiają się same.</p></div><button class="btn pri" data-act="tplNew">+ Nowy szablon</button></div>
     <div class="vars">${VARS.map(v => `<code>{{${v}}}</code>`).join('')}</div><div class="list" id="tList"></div>`; },
   parts:{ tList(){

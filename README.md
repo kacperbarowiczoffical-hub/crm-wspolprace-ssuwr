@@ -44,12 +44,13 @@ Klucz `anon` jest publiczny z założenia – dostęp do danych pilnują reguły
 ---
 
 ## Jak się pracuje
-- **Do zrobienia** – Twoje kroki z kampanii na dziś. „Kontakt z firmą” otwiera okno ze wszystkimi kanałami kroku naraz: mail (przenieś do Outlooka) + wiadomość w social mediach (kopiuj i otwórz profil) + ewentualnie skrypt telefonu. Po wysłaniu zaznaczasz, co poszło, i zapisujesz kontakt – następny krok planuje się sam.
-- **Kontakt z całą firmą** – osoba, która wykonuje kontakt (albo kliknie „Biorę tę firmę”), zostaje opiekunem firmy. Lider może przepisać firmę na kogoś innego.
-- **Odpowiedzieli** – zapisujesz wynik (rozmowy / współpraca / nie teraz / odmowa) i treść odpowiedzi (prywatną). Ścieżki tej firmy się zatrzymują.
-- **✦ Prompt do AI (za darmo)** – aplikacja buduje gotowy prompt z danymi firmy, kampanii i Twoim podpisem. Kopiujesz go do Microsoft Copilot (darmowy z kontem UWr), ChatGPT albo Gemini, a odpowiedź wklejasz z powrotem – treści same trafiają do pól.
-- **Kampanie** (liderzy i admini) – nazwa, cel, zespół, ścieżka (dni + kanały + treści, można wygenerować promptem), filtr firm (domyślnie kategorie zespołu), podział między ludzi i tempo (ile nowych firm dziennie na osobę).
-- **Ustawienia** (admin) – domeny logowania, import firm z pliku .xlsx (np. pobranego z Google Sheets: Plik → Pobierz → Microsoft Excel), eksport całej bazy.
+Cztery zakładki: **Dziś · Firmy · Kampanie · Więcej**.
+- **Dziś** – na górze karta „Następna firma”. Klikasz **Zacznij kontakt →** i idziesz krokami: 1) *Otwórz w Outlooku* (mail gotowy, klikasz tylko „Wyślij”), 2) *kopiuj i otwórz profil* w social mediach, 3) ewentualnie telefon. Potem **Gotowe – następna firma →** i aplikacja sama otwiera kolejną. „Pomiń” przeskakuje firmę, „Jutro” przekłada ją o dzień.
+- **Odpowiedzieli** – zapisujesz wynik (rozmowy / współpraca / nie teraz / odmowa); treść odpowiedzi widzisz tylko Ty.
+- **Firmy** – duża wyszukiwarka, przełącznik *Mój zespół / Moje firmy / Wszystkie* i 6 etapów: Nowa, W kontakcie, Rozmowy, Współpraca, Nie teraz, Odmowa. Pozostałe filtry są schowane pod „Więcej filtrów”.
+- **Kampanie** (liderzy i admini) – wystarczy nazwa, cel i zespół. Gotowa ścieżka (mail + Instagram → przypomnienie → telefon) i podział firm ustawiają się same; zmienić je można w zwiniętych sekcjach.
+- **Więcej** – statystyki, szukanie nowych firm, szablony, zespoły i ludzie, profil (tu też zmiana hasła), ustawienia.
+- **Treść z AI za darmo** – w oknie kontaktu „Zmień kanały · napisz treść z AI”: kopiujesz prompt do Copilota / ChatGPT / Gemini i wklejasz odpowiedź.
 
 ## Role
 | Rola | Może |

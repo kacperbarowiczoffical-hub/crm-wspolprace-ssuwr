@@ -14,10 +14,16 @@ export const sb = CFG.url && CFG.key ? createClient(CFG.url, CFG.key, {auth:{per
 export const SECTORS = ['Gastronomia','Rozrywka i kultura','Sport','Beauty i zdrowie','Moda i zakupy','Usługi i edukacja','Do uzupełnienia'];
 export const ST_SHEET = {G:'Współpraca', Y:'Chętni – nie teraz', R:'Odmowa', '':'Brak statusu'};
 export const STAGES = [
-  {id:'nowa', l:'Nowa', c:''}, {id:'kontakt', l:'Do kontaktu', c:'act'}, {id:'wyslano', l:'Wysłano', c:'act'}, {id:'followup', l:'Follow-up', c:'act'},
-  {id:'odpowiedz', l:'Odpowiedź', c:'new'}, {id:'rozmowy', l:'Rozmowy', c:'new'},
-  {id:'wspolpraca', l:'Współpraca', c:'G', s:'G'}, {id:'pozniej', l:'Chętni – nie teraz', c:'Y', s:'Y'}, {id:'odmowa', l:'Odmowa', c:'R', s:'R'}
+  {id:'nowa', l:'Nowa', c:''}, {id:'kontakt', l:'W kontakcie', c:'act'}, {id:'wyslano', l:'W kontakcie', c:'act'}, {id:'followup', l:'W kontakcie', c:'act'},
+  {id:'odpowiedz', l:'Rozmowy', c:'new'}, {id:'rozmowy', l:'Rozmowy', c:'new'},
+  {id:'wspolpraca', l:'Współpraca', c:'G', s:'G'}, {id:'pozniej', l:'Nie teraz', c:'Y', s:'Y'}, {id:'odmowa', l:'Odmowa', c:'R', s:'R'}
 ];
+/* uproszczone etapy widoczne w aplikacji (kilka etapów bazy = jeden etap w UI) */
+export const STAGES_UI = [
+  {id:'nowa', l:'Nowa', ids:['nowa']}, {id:'wyslano', l:'W kontakcie', ids:['kontakt','wyslano','followup']}, {id:'rozmowy', l:'Rozmowy', ids:['odpowiedz','rozmowy']},
+  {id:'wspolpraca', l:'Współpraca', ids:['wspolpraca']}, {id:'pozniej', l:'Nie teraz', ids:['pozniej']}, {id:'odmowa', l:'Odmowa', ids:['odmowa']}
+];
+export function stageGroup(id){ const g = STAGES_UI.find(x => x.ids.includes(id)); return g ? g.id : 'nowa'; }
 export const STAGE = Object.fromEntries(STAGES.map(s => [s.id, s]));
 export const CH = {
   email:{l:'E-mail', ico:'@', kind:'email'}, ig:{l:'Instagram', ico:'IG', kind:'dm', field:'instagram'}, fb:{l:'Facebook / Messenger', ico:'FB', kind:'dm', field:'facebook'},
@@ -150,7 +156,7 @@ export function refreshNow(){
   refreshChrome();
 }
 export function go(view, arg){
-  if (!V[view]) view = 'pulpit';
+  if (!V[view]) view = 'zadania';
   S.view = view; S.arg = arg === undefined ? null : arg;
   const v = V[view];
   $('main').innerHTML = v.html();
@@ -159,7 +165,7 @@ export function go(view, arg){
   const navKey = v.nav || view;
   document.querySelectorAll('#rail [data-go]').forEach(b => { if (b.dataset.go === navKey) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
   refreshChrome();
-  try { localStorage.setItem('crm-view', ['kampania','nowa'].includes(view) ? 'pulpit' : view); } catch(e){}
+  try { localStorage.setItem('crm-view', ['kampania','nowa'].includes(view) ? 'zadania' : view); } catch(e){}
   const h = '#' + view + (S.arg ? '/' + S.arg : ''); if (location.hash !== h) history.replaceState(null, '', h);
   window.scrollTo({top:0});
 }
