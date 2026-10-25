@@ -24,28 +24,12 @@ function domainOk(email){
   return (S.cfg.allowed_domains || []).some(x => d === x || d.endsWith('.' + x)) || (S.cfg.allowed_emails || []).some(x => x.toLowerCase() === email);
 }
 function loginScreen(msg){
-  authScreen(`<h1>Zaloguj się</h1><p class="sub">Użyj adresu uczelnianego (${esc((S.cfg.allowed_domains||[]).map(d => '@' + d).join(', '))}). Wyślemy Ci jednorazowy kod i link – bez hasła.</p>
-    <form id="fLogin" class="stack"><div class="field"><label class="lbl" for="lEmail">Adres e-mail</label><input type="email" id="lEmail" autocomplete="email" required placeholder="imie.nazwisko@uwr.edu.pl"></div>
-    <button class="btn pri" type="submit" id="lBtn">Wyślij kod logowania</button><p class="hint" id="lMsg">${esc(msg || '')}</p>
-    <p class="hint"><a href="#" id="lPassLink">Mam hasło – zaloguj hasłem</a></p></form>`);
-  $('fLogin').addEventListener('submit', async e => {
-    e.preventDefault();
-    const email = $('lEmail').value.trim().toLowerCase();
-    if (!domainOk(email)) { $('lMsg').textContent = 'To nie jest adres uczelniany. Zaloguj się adresem w domenie ' + (S.cfg.allowed_domains||[]).join(', ') + '.'; return; }
-    $('lBtn').disabled = true; $('lMsg').textContent = 'Wysyłam…';
-    const { error } = await sb.auth.signInWithOtp({email, options:{shouldCreateUser:true, emailRedirectTo: location.origin + location.pathname}});
-    $('lBtn').disabled = false;
-    if (error) { $('lMsg').textContent = /database error|uczelnian/i.test(error.message) ? 'Logowanie tylko adresem uczelnianym.' : /rate|seconds/i.test(error.message) ? 'Za dużo prób – odczekaj chwilę i spróbuj ponownie.' : 'Nie udało się wysłać maila: ' + error.message; return; }
-    codeScreen(email);
-  });
-  $('lPassLink').addEventListener('click', e => { e.preventDefault(); passwordScreen($('lEmail').value.trim().toLowerCase()); });
-}
-function passwordScreen(email){
-  authScreen(`<h1>Zaloguj się hasłem</h1><p class="sub">Dla kont, którym administrator ustawił hasło.</p>
-    <form id="fPass" class="stack"><div class="field"><label class="lbl" for="pEmail">Adres e-mail</label><input type="email" id="pEmail" autocomplete="username" required value="${esc(email || '')}"></div>
+  authScreen(`<h1>Zaloguj się</h1><p class="sub">Login i hasło dostajesz od administratora komisji. Po pierwszym logowaniu zmień hasło w profilu.</p>
+    <form id="fPass" class="stack"><div class="field"><label class="lbl" for="pEmail">Adres e-mail</label><input type="email" id="pEmail" autocomplete="username" required placeholder="imie.nazwisko@uwr.edu.pl"></div>
     <div class="field"><label class="lbl" for="pPass">Hasło</label><input type="password" id="pPass" autocomplete="current-password" required></div>
-    <button class="btn pri" type="submit" id="pBtn">Zaloguj</button><p class="hint" id="pMsg"><a href="#" id="pBack">Wróć do logowania kodem z maila</a></p></form>`);
-  $('pBack').addEventListener('click', e => { e.preventDefault(); loginScreen(); });
+    <button class="btn pri" type="submit" id="pBtn">Zaloguj</button><p class="hint" id="pMsg">${esc(msg || 'Nie masz konta albo zapomniałeś hasła? Napisz do administratora komisji.')}</p>
+    <p class="hint"><a href="#" id="pOtp">Zaloguj linkiem z maila</a></p></form>`);
+  $('pOtp').addEventListener('click', e => { e.preventDefault(); otpScreen($('pEmail').value.trim().toLowerCase()); });
   $('fPass').addEventListener('submit', async e => {
     e.preventDefault(); $('pBtn').disabled = true;
     const { error } = await sb.auth.signInWithPassword({email:$('pEmail').value.trim().toLowerCase(), password:$('pPass').value});
@@ -54,8 +38,25 @@ function passwordScreen(email){
     location.reload();
   });
 }
+function otpScreen(email){
+  authScreen(`<h1>Zaloguj linkiem z maila</h1><p class="sub">Wyślemy link logowania na adres uczelniany.</p>
+    <form id="fLogin" class="stack"><div class="field"><label class="lbl" for="lEmail">Adres e-mail</label><input type="email" id="lEmail" autocomplete="email" required value="${esc(email || '')}"></div>
+    <button class="btn pri" type="submit" id="lBtn">Wyślij link</button><p class="hint" id="lMsg"></p>
+    <p class="hint"><a href="#" id="lBack">Wróć do logowania hasłem</a></p></form>`);
+  $('lBack').addEventListener('click', e => { e.preventDefault(); loginScreen(); });
+  $('fLogin').addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = $('lEmail').value.trim().toLowerCase();
+    if (!domainOk(email)) { $('lMsg').textContent = 'To nie jest adres uczelniany.'; return; }
+    $('lBtn').disabled = true; $('lMsg').textContent = 'Wysyłam…';
+    const { error } = await sb.auth.signInWithOtp({email, options:{shouldCreateUser:true, emailRedirectTo: location.origin + location.pathname}});
+    $('lBtn').disabled = false;
+    if (error) { $('lMsg').textContent = /database error|uczelnian/i.test(error.message) ? 'Logowanie tylko adresem uczelnianym.' : /rate|seconds/i.test(error.message) ? 'Za dużo prób – odczekaj chwilę.' : 'Nie udało się wysłać maila: ' + error.message; return; }
+    codeScreen(email);
+  });
+}
 function codeScreen(email){
-  authScreen(`<h1>Sprawdź skrzynkę</h1><p class="sub">Wysłaliśmy wiadomość na <b>${esc(email)}</b>. Kliknij link w mailu albo wpisz kod z wiadomości.</p>
+  authScreen(`<h1>Sprawdź skrzynkę</h1><p class="sub">Wysłaliśmy wiadomość na <b>${esc(email)}</b>. Kliknij link w mailu.</p>
     <form id="fCode" class="stack"><div class="field"><label class="lbl" for="lCode">Kod z maila</label><input type="text" id="lCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required></div>
     <button class="btn pri" type="submit">Zaloguj</button><p class="hint" id="cMsg">Mail nie dotarł? Sprawdź folder „Wiadomości-śmieci” albo <a href="#" id="cBack">wyślij ponownie</a>.</p></form>`);
   $('cBack').addEventListener('click', e => { e.preventDefault(); loginScreen(); });

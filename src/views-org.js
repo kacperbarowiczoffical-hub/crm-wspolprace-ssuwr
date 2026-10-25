@@ -11,7 +11,7 @@ V.wiecej = {
       ['pulpit','Statystyki komisji','Wyniki z ostatnich 30 dni i ostatnie kontakty'],
       ['narzedzia','Szukanie nowych firm','Sprawdź, czy firma jest w bazie, znajdź nowe firmy i maile'],
       ['szablony','Szablony wiadomości','Gotowe maile i wiadomości do social mediów'],
-      ['struktura','Zespoły i ludzie', isAdmin() ? 'Akceptuj nowe osoby, twórz zespoły, nadawaj role' : 'Kto jest w jakim zespole'],
+      ['struktura','Zespoły i ludzie', isAdmin() ? 'Dodawaj osoby, twórz zespoły, nadawaj role' : 'Kto jest w jakim zespole'],
       ['profil','Mój profil','Imię, podpis maila, hasło'],
       ...(isAdmin() ? [['ustawienia','Ustawienia','Import firm z Excela, eksport, domeny logowania']] : [])
     ];
@@ -26,7 +26,7 @@ V.wiecej = {
 V.struktura = {
   nav:'wiecej',
   html(){
-    return `<div class="vhead"><div><h1>Struktura komisji</h1><p class="sub">Administratorzy główni zarządzają całą komisją. Liderzy prowadzą zespoły, a każdy zespół odpowiada za jedną lub kilka kategorii firm.</p></div>${isAdmin() ? `<button class="btn pri" data-act="teamNew">+ Nowy zespół</button>` : ''}</div>
+    return `<div class="vhead"><div><h1>Struktura komisji</h1><p class="sub">Administratorzy główni zarządzają całą komisją. Liderzy prowadzą zespoły, a każdy zespół odpowiada za jedną lub kilka kategorii firm.</p></div>${isAdmin() ? `<div class="row"><button class="btn pri" data-act="userNew">+ Dodaj osobę</button><button class="btn" data-act="teamNew">+ Nowy zespół</button></div>` : ''}</div>
       <div id="sPending"></div>
       <div class="box"><h3>Administratorzy główni</h3><div class="row" id="sAdmins"></div></div>
       <div class="grid g2" id="sTeams"></div>
@@ -63,7 +63,7 @@ V.struktura = {
         const teams = myTeams(p.id).map(x => x.name).join(', ');
         return `<tr><td><span class="row" style="flex-wrap:nowrap">${avatarHTML(p.id)}<span><b>${esc(p.full_name || '—')}</b><br><span class="hint">${esc(p.email)}</span></span></span></td><td>${esc(ROLES[p.role])}${p.fn ? `<div class="hint">${esc(p.fn)}</div>` : ''}</td><td>${esc(teams || '—')}</td>
           <td>${S.list.filter(f => f.owner_id === p.id).length}</td><td>${q.filter(x => x.t.assignee === p.id && x.t.due <= t).length}</td><td>${S.acts.filter(a => a.by === p.id && a.type === 'contact' && a.at >= since).length}</td><td>${S.list.filter(f => f.owner_id === p.id && f.stage === 'wspolpraca').length}</td>
-          ${isAdmin() ? `<td>${p.id !== S.me.id ? `<select data-role-set="${esc(p.id)}" style="width:auto;padding:3px 6px;font-size:12px">${optList(Object.entries(ROLES), p.role)}</select> <button class="btn sm ghost danger" data-act="block" data-id="${esc(p.id)}">Zablokuj</button>` : ''}</td>` : ''}</tr>`;
+          ${isAdmin() ? `<td style="white-space:nowrap">${p.id !== S.me.id ? `<select data-role-set="${esc(p.id)}" style="width:auto;padding:3px 6px;font-size:12px">${optList(Object.entries(ROLES), p.role)}</select> <button class="btn sm ghost" data-act="userPass" data-id="${esc(p.id)}">Nowe hasło</button> <button class="btn sm ghost danger" data-act="block" data-id="${esc(p.id)}">Zablokuj</button>` : ''}</td>` : ''}</tr>`;
       }).join('');
     }
   },
@@ -83,6 +83,41 @@ A.approve = async el => {
 A.block = async el => { const { error } = await sb.from('profiles').update({status:'blocked'}).eq('id', el.dataset.id); if (error) return dbErr(error); S.profiles.get(el.dataset.id).status = 'blocked'; toast('Zablokowano dostęp'); refreshNow(); };
 A.tmAdd = async el => { const t = el.dataset.t, u = $('tmAdd-' + t).value; if (!u) return; const { error } = await sb.from('team_members').insert({team_id:t, user_id:u}); if (error) return dbErr(error); S.tm.push({team_id:t, user_id:u}); refreshNow(); toast('Dodano do zespołu'); };
 A.tmDel = async el => { const { error } = await sb.from('team_members').delete().eq('team_id', el.dataset.t).eq('user_id', el.dataset.u); if (error) return dbErr(error); S.tm = S.tm.filter(x => !(x.team_id === el.dataset.t && x.user_id === el.dataset.u)); refreshNow(); };
+/* konta zakładane przez admina – bez maili */
+function genPass(){ const a = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'; const r = crypto.getRandomValues(new Uint32Array(10)); return 'Ss-' + [...r].map(x => a[x % a.length]).join(''); }
+function credsBox(email, pass){
+  const txt = `Konto w CRM Komisji ds. Współprac Zewnętrznych:\n${location.origin}\nLogin: ${email}\nHasło: ${pass}\nPo zalogowaniu zmień hasło w: Więcej → Mój profil.`;
+  S.ui.creds = txt;
+  return `<div class="box" style="border-color:var(--gold)"><b>Przekaż tej osobie dane logowania:</b><pre style="white-space:pre-wrap;margin:8px 0">${esc(txt)}</pre><button class="btn pri" data-act="copyCreds">Kopiuj dane logowania</button></div>`;
+}
+A.copyCreds = () => { copyText(S.ui.creds || ''); toast('Skopiowano – wyślij to tej osobie (np. na Messengerze)'); };
+A.userNew = () => {
+  openModal(`<div class="row"><h2>Dodaj osobę</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
+    <p class="hint">Konto działa od razu, bez maili. Dostaniesz dane logowania do przekazania.</p>
+    <div class="fgrid"><div class="field"><label class="lbl" for="unEmail">E-mail</label><input type="email" id="unEmail" placeholder="imie.nazwisko@uwr.edu.pl"></div>
+    <div class="field"><label class="lbl" for="unName">Imię i nazwisko</label><input type="text" id="unName"></div>
+    <div class="field"><label class="lbl" for="unRole">Rola</label><select id="unRole">${optList(Object.entries(ROLES), 'member')}</select></div>
+    <div class="field"><label class="lbl" for="unPass">Hasło startowe</label><input type="text" id="unPass" value="${genPass()}"></div></div>
+    <div class="row"><button class="btn pri" id="unBtn" data-act="userSave">Utwórz konto</button></div><div id="unOut"></div>`);
+};
+A.userSave = async () => {
+  const email = $('unEmail').value.trim().toLowerCase(), pass = $('unPass').value.trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Wpisz poprawny e-mail');
+  $('unBtn').disabled = true;
+  const { data:uid, error } = await sb.rpc('admin_add_user', {p_email:email, p_password:pass, p_name:$('unName').value.trim(), p_role:$('unRole').value});
+  $('unBtn').disabled = false;
+  if (error) return toast(error.message);
+  const { data:prof } = await sb.from('profiles').select('*').eq('id', uid).single();
+  if (prof) S.profiles.set(prof.id, prof);
+  $('unOut').innerHTML = credsBox(email, pass); $('unBtn').hidden = true; refreshNow();
+};
+A.userPass = async el => {
+  const p = S.profiles.get(el.dataset.id), pass = genPass();
+  if (!confirm(`Ustawić nowe hasło dla ${p.full_name || p.email}? Stare przestanie działać.`)) return;
+  const { error } = await sb.rpc('admin_set_password', {p_user:p.id, p_password:pass});
+  if (error) return toast(error.message);
+  openModal(`<div class="row"><h2>Nowe hasło</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>${credsBox(p.email, pass)}`);
+};
 A.teamFirms = el => { S.ui.ff = {limit:60, team:el.dataset.id}; go('firmy'); };
 A.teamNew = () => teamForm(null);
 A.teamEdit = el => teamForm(S.teams.get(el.dataset.id));
@@ -117,7 +152,7 @@ V.profil = {
     const m = S.me;
     return `<div class="vhead"><div><h1>Mój profil</h1><p class="sub">Dane do podpisu i do przenoszenia wiadomości do Outlooka. Rola: <b>${esc(ROLES[m.role])}</b>${myTeams().length ? ' · zespoły: ' + esc(myTeams().map(t => t.name).join(', ')) : ''}.</p></div><button class="btn" data-act="logout">Wyloguj</button></div>
       <div class="box">${profileFields(m)}<div class="row"><button class="btn pri" data-act="saveProfile">Zapisz profil</button></div></div>
-      <div class="box"><h3>Hasło (opcjonalnie)</h3><p class="hint">Możesz logować się kodem z maila albo hasłem. Ustaw lub zmień hasło – co najmniej 8 znaków.</p>
+      <div class="box"><h3>Hasło</h3><p class="hint">Zmień hasło startowe od administratora na własne – co najmniej 8 znaków.</p>
         <div class="fgrid"><div class="field"><label class="lbl" for="pNew">Nowe hasło</label><input type="password" id="pNew" autocomplete="new-password"></div>
         <div class="field"><label class="lbl" for="pNew2">Powtórz hasło</label><input type="password" id="pNew2" autocomplete="new-password"></div></div>
         <div class="row"><button class="btn" data-act="setPassword">Zapisz hasło</button></div></div>`;

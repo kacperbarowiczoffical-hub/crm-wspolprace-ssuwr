@@ -2,8 +2,8 @@
 
 Aplikacja webowa do prowadzenia kontaktów z firmami: baza firm, historia kontaktu, kampanie ze ścieżkami (e-mail + social media naraz), zespoły i role, prompty do darmowego AI, import/eksport Excela.
 
-- **Logowanie mailem uczelnianym** (kod / link na skrzynkę, bez hasła). Tylko domeny z listy (domyślnie `uwr.edu.pl` i subdomeny, np. `student.uwr.edu.pl`).
-- **Nowe konto czeka na akceptację** administratora. Pierwsze konto w systemie zostaje automatycznie administratorem głównym.
+- **Logowanie e-mailem i hasłem.** Administrator dodaje osobę w *Więcej → Zespoły i ludzie → + Dodaj osobę* i przekazuje jej wygenerowane dane logowania; osoba zmienia hasło w profilu. Nie trzeba skrzynki SMTP ani żadnych maili. Przy osobie jest też przycisk *Nowe hasło* (gdy ktoś zapomni).
+- Opcjonalnie: logowanie linkiem z maila (wymaga własnego SMTP w Supabase – kroki 5–6 niżej).
 - **Wysyłka**: aplikacja przygotowuje spersonalizowaną wiadomość i przenosi ją do Outlooka osoby (Outlook w przeglądarce, Outlook.com albo program pocztowy). Wiadomości na Instagram/Facebook/TikTok/LinkedIn: kopiuj + otwórz profil.
 - **Struktura**: administratorzy główni → liderzy zespołów → zespoły (każdy zespół ma sektory i/lub kategorie firm) → członkowie.
 - **Prywatność odpowiedzi**: treść odpowiedzi firmy widzi tylko osoba, która ją zapisała. Liderzy i admini widzą, że odpowiedź przyszła, wynik i notatkę.
