@@ -120,7 +120,7 @@ export function splitContact(k, w){
 export const S = {
   session:null, me:null, cfg:{allowed_domains:['uwr.edu.pl']},
   profiles:new Map(), teams:new Map(), tm:[], firms:new Map(), list:[], idx:new Map(),
-  camps:new Map(), targets:new Map(), acts:[], tpls:new Map(), replies:new Map(),
+  camps:new Map(), targets:new Map(), acts:[], tpls:new Map(), replies:new Map(), cats:new Map(),
   view:'pulpit', arg:null, ui:{}, drawer:null, loaded:false
 };
 export const isAdmin = () => !!S.me && S.me.role === 'admin' && S.me.status === 'active';
@@ -241,11 +241,13 @@ async function fetchAll(table, order){
   return out;
 }
 export async function loadAll(){
-  const [profiles, teams, tm, firms, camps, targets, tpls, replies, acts] = await Promise.all([
+  const [profiles, teams, tm, firms, camps, targets, tpls, replies, acts, cats] = await Promise.all([
     fetchAll('profiles'), fetchAll('teams'), fetchAll('team_members'), fetchAll('firms', ['name','asc']), fetchAll('campaigns'),
     fetchAll('campaign_targets'), fetchAll('templates'), fetchAll('reply_contents'),
-    sb.from('activities').select('*').order('at', {ascending:false}).limit(1500).then(r => { if (r.error) throw r.error; return r.data; })
+    sb.from('activities').select('*').order('at', {ascending:false}).limit(1500).then(r => { if (r.error) throw r.error; return r.data; }),
+    fetchAll('categories').catch(() => [])
   ]);
+  S.cats = new Map(cats.map(c => [c.name, c]));
   S.profiles = new Map(profiles.map(p => [p.id, p]));
   S.me = S.profiles.get(S.me.id) || S.me;
   S.teams = new Map(teams.map(t => [t.id, t])); S.tm = tm;
@@ -267,6 +269,7 @@ export function subscribeRealtime(){
       case 'campaigns': if (row) S.camps.set(row.id, row); else { S.camps.delete(old.id); S.targets.delete(old.id); } break;
       case 'campaign_targets': if (row) { if (!S.targets.has(row.campaign_id)) S.targets.set(row.campaign_id, new Map()); S.targets.get(row.campaign_id).set(row.firm_id, row); } else if (old.campaign_id && S.targets.has(old.campaign_id)) S.targets.get(old.campaign_id).delete(old.firm_id); break;
       case 'activities': if (row) { const i = S.acts.findIndex(a => a.id === row.id); if (i >= 0) S.acts[i] = row; else S.acts.unshift(row); } else S.acts = S.acts.filter(a => a.id !== old.id); break;
+      case 'categories': if (row) S.cats.set(row.name, row); else S.cats.delete(old.name); break;
       case 'templates': if (row) S.tpls.set(row.id, row); else S.tpls.delete(old.id); break;
     }
     refresh();
@@ -314,11 +317,12 @@ export function fillVars(text, f, camp, p){
     imie: imie || '', nazwisko: rest.join(' '), funkcja: p.fn || '', telefon: p.phone || '', podpis: signature(p)};
   return String(text || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (all, k) => map[k] !== undefined ? map[k] : all);
 }
+export const ccEmail = () => ((S.cfg && S.cfg.cc_email) || '').trim();
 export function outlookUrl(to, subject, body){
-  const kind = (S.me && S.me.outlook_kind) || 'web';
-  if (kind === 'app') return `mailto:${to.split(/[;,]/).map(s => s.trim()).filter(Boolean).join(',')}?subject=${enc(subject)}&body=${enc(body)}`;
+  const kind = (S.me && S.me.outlook_kind) || 'web', cc = ccEmail();
+  if (kind === 'app') return `mailto:${to.split(/[;,]/).map(s => s.trim()).filter(Boolean).join(',')}?${cc ? `cc=${enc(cc)}&` : ''}subject=${enc(subject)}&body=${enc(body)}`;
   const base = kind === 'live' ? 'https://outlook.live.com/mail/0/deeplink/compose' : 'https://outlook.office.com/mail/deeplink/compose';
-  return `${base}?to=${enc(to)}&subject=${enc(subject)}&body=${enc(body)}`;
+  return `${base}?to=${enc(to)}${cc ? `&cc=${enc(cc)}` : ''}&subject=${enc(subject)}&body=${enc(body)}`;
 }
 
 /* ================= prompty do darmowego AI ================= */

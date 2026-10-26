@@ -1,7 +1,7 @@
 import { S, V, A, $, esc, enc, fold, keyOf, slug, rid, todayISO, addDays, fmtDay, fmtWhen, dueLabel, emailsIn, igHandle, socialUrl, cityOf, shortUrl,
   toast, copyText, openUrl, STAGES, STAGES_UI, stageGroup, STAGE, CH, ACTL, OUTCOMES, SECTORS, ROLES, isAdmin, isLead, isActive, myTeams, isMyScope, firmTeams, pname, pfirst, avatarHTML,
   go, refresh, refreshNow, openModal, closeLayer, optList, peopleOpts, stagePill, chTag, updateFirm, insertFirm, logAct, setTarget,
-  allTpls, tplById, fillVars, outlookUrl, AI_TOOLS, contactPrompt, parseAiAnswer, sb, dbErr, splitContact } from './core.js';
+  allTpls, tplById, fillVars, outlookUrl, ccEmail, AI_TOOLS, contactPrompt, parseAiAnswer, sb, dbErr, splitContact } from './core.js';
 
 /* ================= wspólne ================= */
 /* firmy, które są w innej (niezarchiwizowanej) kampanii i nie odpowiedziały – nie trafiają do kolejnych */
@@ -198,7 +198,7 @@ export function openContact(o){
   const nQ = S.ui.flow ? myQueue().filter(x => x.t.due <= todayISO()).length : 0;
   openModal(`<div class="row"><div><h2>${esc(f.name)}</h2><div class="hint">${camp ? esc(camp.name) + ' · ' : ''}${esc(step.label || 'Kontakt')}${nQ > 1 ? ` · zostało ${nQ} firm na dziś` : ''}</div></div><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
     <section class="cbox" data-sec="email" ${has('email') ? '' : 'hidden'}><h3><span class="stepn">1</span> Wyślij maila</h3>
-      <div class="field"><label class="lbl" for="ctTo">Do</label><input type="text" id="ctTo" value="${esc(emailsIn(f.email).join(', '))}" placeholder="brak maila – wpisz albo pomiń"></div>
+      <div class="field"><label class="lbl" for="ctTo">Do</label><input type="text" id="ctTo" value="${esc(emailsIn(f.email).join(', '))}" placeholder="brak maila – wpisz albo pomiń">${ccEmail() ? `<span class="hint">DW: ${esc(ccEmail())}</span>` : ''}</div>
       <details class="edit"><summary>Pokaż i popraw treść maila</summary>
         <div class="field"><label class="lbl" for="ctSubj">Temat</label><input type="text" id="ctSubj" value="${esc(fillVars(step.subject, f, camp))}"></div>
         <div class="field"><label class="lbl" for="ctBody">Treść</label><textarea id="ctBody" rows="10">${esc(fillVars(step.body, f, camp))}</textarea></div></details>
@@ -317,7 +317,28 @@ A.saveReply = async () => {
 };
 
 /* ================= FIRMY ================= */
-export function catsFor(sec){ return [...new Set(S.list.filter(f => !sec || f.sector === sec).map(f => f.category).filter(Boolean))].sort((a,b) => a.localeCompare(b,'pl')); }
+export function catsFor(sec){
+  const own = [...(S.cats || new Map()).values()].filter(c => !sec || !c.sector || c.sector === sec).map(c => c.name);
+  return [...new Set([...S.list.filter(f => !sec || f.sector === sec).map(f => f.category).filter(Boolean), ...own])].sort((a,b) => a.localeCompare(b,'pl'));
+}
+A.catNew = () => {
+  const sec = ($('fSec') && $('fSec').value) || '';
+  openModal(`<div class="row"><h2>Nowa kategoria</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
+    <div class="fgrid"><div class="field"><label class="lbl" for="cnName">Nazwa kategorii</label><input type="text" id="cnName" placeholder="np. Escape roomy"></div>
+    <div class="field"><label class="lbl" for="cnSec">Sektor</label><select id="cnSec">${optList(SECTORS.map(s => [s,s]), sec || SECTORS[0])}</select></div></div>
+    <p class="hint">Kategoria od razu pojawi się w filtrach, przy dodawaniu firm i przy zespołach.</p>
+    <div class="row"><button class="btn pri" data-act="catSave">Dodaj kategorię</button></div>`);
+  setTimeout(() => $('cnName') && $('cnName').focus(), 50);
+};
+A.catSave = async () => {
+  const name = $('cnName').value.trim().replace(/\s+/g, ' '), sector = $('cnSec').value;
+  if (!name) return toast('Wpisz nazwę kategorii');
+  if (catsFor('').some(c => c.toLowerCase() === name.toLowerCase())) return toast('Taka kategoria już jest');
+  const { data, error } = await sb.from('categories').insert({name, sector}).select().single(); if (error) return dbErr(error);
+  S.cats.set(data.name, data); closeLayer();
+  if (S.view === 'firmy' && S.ui.ff) { Object.assign(S.ui.ff, {sec:sector, cat:name, limit:60}); go('firmy'); } else refreshNow();
+  toast('Dodano kategorię „' + name + '”');
+};
 export function firmFilter(o){
   const q = fold(o.q || '').trim().split(/\s+/).filter(Boolean), team = o.team && S.teams.get(o.team);
   return S.list.filter(f => (!o.sec || f.sector === o.sec) && (!o.cat || f.category === o.cat) && (!o.stage || stageGroup(f.stage) === o.stage) && (!o.z || f.reach === o.z)
@@ -339,9 +360,10 @@ V.firmy = {
       <input type="search" id="fQ" class="bigsearch" value="${esc(u.q||'')}" placeholder="Szukaj firmy po nazwie, kategorii, adresie…" aria-label="Szukaj firmy">
       <div class="subtabs" id="fScope"></div>
       <div class="stagebar" id="fStages"></div>
-      <details class="more" ${u.sec || u.cat || u.own || u.has ? 'open' : ''}><summary>Więcej filtrów</summary><div class="filters" style="grid-template-columns:repeat(4,minmax(0,1fr))">
-        <div class="field"><label class="lbl" for="fSec">Sektor</label><select id="fSec"><option value="">Wszystkie</option>${optList(SECTORS.map(s => [s,s]), u.sec)}</select></div>
+      <div class="catbar"><div class="field"><label class="lbl" for="fSec">Sektor</label><select id="fSec"><option value="">Wszystkie</option>${optList(SECTORS.map(s => [s,s]), u.sec)}</select></div>
         <div class="field"><label class="lbl" for="fCat">Kategoria</label><select id="fCat"></select></div>
+        ${isLead() ? `<button class="btn" data-act="catNew">+ Nowa kategoria</button>` : ''}</div>
+      <details class="more" ${u.own || u.has ? 'open' : ''}><summary>Więcej filtrów</summary><div class="filters" style="grid-template-columns:repeat(2,minmax(0,1fr))">
         <div class="field"><label class="lbl" for="fOwn">Prowadzi</label><select id="fOwn"></select></div>
         <div class="field"><label class="lbl" for="fHas">Kontakt</label><select id="fHas">${optList([['','Dowolny'],['email','Ma e-mail'],['social','Ma social media'],['none','Brak kontaktu']], u.has)}</select></div>
       </div><div class="row"><button class="btn sm" data-act="exportXlsx">Pobierz Excel</button></div></details>

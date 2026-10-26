@@ -278,7 +278,12 @@ V.ustawienia = {
   nav:'wiecej',
   html(){
     if (!isAdmin()) return `<div class="empty">Tylko dla administratorów głównych.</div>`;
-    return `<div class="vhead"><div><h1>Ustawienia</h1><p class="sub">Import firm z arkusza i dozwolone domeny logowania.</p></div></div>
+    return `<div class="vhead"><div><h1>Ustawienia</h1><p class="sub">DW w mailach, kategorie, import firm i domeny logowania.</p></div></div>
+      <div class="box"><h3>Kopia maili (DW)</h3><p class="hint">Ten adres trafia do pola „DW” w każdym mailu otwieranym z aplikacji w Outlooku. Zostaw puste, żeby wyłączyć.</p>
+        <input type="email" id="cfgCc" value="${esc(S.cfg.cc_email || '')}" placeholder="np. marketingssuwr@gmail.com"><div class="row"><button class="btn" data-act="saveCc">Zapisz</button></div></div>
+      <div class="box"><div class="row between"><h3>Kategorie dodane w aplikacji</h3><button class="btn" data-act="catNew">+ Nowa kategoria</button></div>
+        <p class="hint">Pozostałe kategorie biorą się z firm w bazie. Nowe kategorie widać w filtrach Firm, w kampaniach i przy zespołach.</p>
+        <div class="row" id="cfgCats"></div></div>
       <div class="box"><h3>Dozwolone domeny e-mail</h3><p class="hint">Zalogować się może tylko adres z tych domen (i ich subdomen, np. student.uwr.edu.pl). Każde nowe konto czeka na akceptację admina.</p>
         <input type="text" id="cfgDom" value="${esc((S.cfg.allowed_domains||[]).join(', '))}"><div class="row"><button class="btn" data-act="saveDomains">Zapisz domeny</button></div></div>
       <div class="box"><h3>Import firm z pliku Excel</h3><p class="hint">W Google Sheets wybierz Plik → Pobierz → Microsoft Excel (.xlsx) i wgraj plik tutaj. Zakładki traktuję jako sektory. Obsługuję starą kolumnę „E-mail / social” (rozdzielę ją na e-mail i social media) oraz nowe, osobne kolumny.</p>
@@ -287,6 +292,20 @@ V.ustawienia = {
         <div class="row"><button class="btn pri" data-act="runImport">Importuj</button><span class="hint" id="impMsg"></span></div></div>
       <div class="box"><h3>Eksport</h3><div class="row"><button class="btn" data-act="exportXlsx">Pobierz całą bazę (.xlsx)</button></div></div>`;
   }
+};
+V.ustawienia.parts = { cfgCats(){ const cs = [...(S.cats || new Map()).values()].sort((a,b) => a.name.localeCompare(b.name,'pl'));
+  return cs.length ? cs.map(c => `<span class="chip">${esc(c.name)} <span class="hint">${esc(c.sector)} · ${S.list.filter(f => f.category === c.name).length} firm</span> <button class="x sm" data-act="catDel" data-n="${esc(c.name)}" aria-label="Usuń kategorię">×</button></span>`).join('') : '<span class="hint">Brak – dodaj pierwszą.</span>'; } };
+A.catDel = async el => {
+  const n = el.dataset.n, used = S.list.filter(f => f.category === n).length;
+  if (!confirm(used ? `Usunąć „${n}” z listy? ${used} firm zachowa tę kategorię, ale nie będzie jej na liście do wyboru, gdy żadna firma jej nie ma.` : `Usunąć kategorię „${n}”?`)) return;
+  const { error } = await sb.from('categories').delete().eq('name', n); if (error) return dbErr(error);
+  S.cats.delete(n); refreshNow(); toast('Usunięto');
+};
+A.saveCc = async () => {
+  const v = $('cfgCc').value.trim().toLowerCase();
+  if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return toast('Wpisz poprawny adres');
+  const { error } = await sb.from('app_config').update({cc_email:v}).eq('id', 1); if (error) return dbErr(error);
+  S.cfg.cc_email = v; toast(v ? 'Zapisano – nowe maile pójdą z DW: ' + v : 'Wyłączono DW');
 };
 A.saveDomains = async () => {
   const d = $('cfgDom').value.split(/[,;\s]+/).map(x => x.trim().toLowerCase().replace(/^@/,'')).filter(Boolean);

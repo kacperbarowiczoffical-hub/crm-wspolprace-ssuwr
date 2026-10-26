@@ -1,5 +1,5 @@
 import './style.css';
-import { sb, S, V, A, $, esc, CFG, toast, go, closeLayer, loadAll, subscribeRealtime, refreshChrome, isAdmin } from './core.js';
+import { sb, S, V, A, $, esc, fold, CFG, toast, go, closeLayer, loadAll, subscribeRealtime, refreshChrome, isAdmin, stagePill, pfirst } from './core.js';
 import './views-work.js';
 import './views-camp.js';
 import { profileFields, saveProfileFrom } from './views-org.js';
@@ -13,6 +13,26 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('layer').innerHTML) { S.ui.flow = false; closeLayer(); } });
 A.close = () => { S.ui.flow = false; closeLayer(); };
+
+/* ---------- wyszukiwarka firm w nagłówku ---------- */
+function gSearch(){
+  const q = $('gQ'), box = $('gRes'); if (!q) return;
+  const show = () => {
+    const w = fold(q.value).trim().split(/\s+/).filter(Boolean);
+    if (!w.length || !S.loaded) { box.hidden = true; return; }
+    const hits = S.list.filter(f => w.every(x => f._t.includes(x)));
+    const first = fold(q.value).trim();
+    hits.sort((a,b) => (fold(b.name).startsWith(first) ? 1 : 0) - (fold(a.name).startsWith(first) ? 1 : 0) || a.name.localeCompare(b.name,'pl'));
+    box.innerHTML = (hits.length ? hits.slice(0, 8).map(f => `<button class="gr" data-act="gOpen" data-id="${esc(f.id)}"><b>${esc(f.name)}</b><span class="hint">${esc(f.category || f.sector || '')}${f.owner_id ? ' · prowadzi ' + esc(pfirst(f.owner_id)) : ''}</span>${stagePill(f)}</button>`).join('') : `<div class="hint" style="padding:10px 12px">Nie ma takiej firmy w bazie.</div>`)
+      + (hits.length > 8 ? `<button class="gr more" data-act="gAll">Pokaż wszystkie (${hits.length}) →</button>` : '');
+    box.hidden = false;
+  };
+  q.addEventListener('input', show); q.addEventListener('focus', show);
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); A.gAll(); } if (e.key === 'Escape') { box.hidden = true; q.blur(); } });
+  document.addEventListener('click', e => { if (!e.target.closest('.gsearch')) box.hidden = true; });
+}
+A.gOpen = el => { $('gRes').hidden = true; $('gQ').value = ''; A.openFirm(el); };
+A.gAll = () => { const v = $('gQ').value.trim(); $('gRes').hidden = true; if (!v) return; S.ui.ff = Object.assign(S.ui.ff || {}, {q:v, team:'', own:'', stage:'', sec:'', cat:'', limit:60}); $('gQ').value = ''; go('firmy'); };
 
 /* ---------- ekrany logowania ---------- */
 function authScreen(html){
@@ -96,7 +116,7 @@ async function boot(){
   refreshChrome();
   try { await loadAll(); }
   catch(e){ $('main').innerHTML = `<div class="empty">Nie udało się wczytać danych. Odśwież stronę.</div>`; console.error(e); return; }
-  subscribeRealtime();
+  subscribeRealtime(); gSearch();
   const [view, arg] = location.hash.replace(/^#/, '').split('/');
   let start = view; if (!start) { try { start = localStorage.getItem('crm-view'); } catch(e){} }
   go(V[start] && start !== 'pulpit' ? start : 'zadania', arg ? decodeURIComponent(arg) : undefined);
