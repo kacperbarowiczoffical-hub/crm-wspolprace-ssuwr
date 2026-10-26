@@ -1,7 +1,7 @@
 import { S, V, A, $, esc, fold, todayISO, addDays, fmtDay, emailsIn, igHandle, socialUrl, toast, copyText, STAGES, STAGES_UI, stageGroup, STAGE, CH, SECTORS, VARS, PRESETS,
   isAdmin, isLead, ledTeams, teamMembers, inTeamScope, pname, pfirst, go, refresh, refreshNow, openModal, closeLayer, optList, peopleOpts, stagePill, chTag,
   updateFirm, setTarget, allTpls, tplById, sb, dbErr, pathPrompt, parsePathAnswer } from './core.js';
-import { campRow, pathHTML, tState, catsFor, promptModal } from './views-work.js';
+import { campRow, pathHTML, tState, catsFor, promptModal, blockedFirms, canClaim } from './views-work.js';
 
 /* ================= KAMPANIE ================= */
 V.kampanie = {
@@ -10,7 +10,9 @@ V.kampanie = {
     const cs = [...S.camps.values()].sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
     if (!cs.length) return `<div class="empty">Nie ma jeszcze kampanii.${isLead() ? ' <a href="#" data-go="nowa">Utwórz pierwszą</a>' : ' Kampanie tworzą liderzy zespołów.'}</div>`;
     const lab = {active:'Aktywne', paused:'Wstrzymane', done:'Zakończone'};
-    return ['active','paused','done'].map(st => { const g = cs.filter(c => c.status === st); return g.length ? `<h3>${lab[st]} (${g.length})</h3>` + g.map(campRow).join('') : ''; }).join('');
+    const arch = cs.filter(c => c.status === 'archived');
+    return ['active','paused','done'].map(st => { const g = cs.filter(c => c.status === st); return g.length ? `<h3>${lab[st]} (${g.length})</h3>` + g.map(campRow).join('') : ''; }).join('')
+      + (arch.length ? `<details class="more"><summary>Archiwum (${arch.length})</summary>${arch.map(campRow).join('')}</details>` : '');
   } }
 };
 function canManage(c){ return isAdmin() || c.created_by === S.me.id || (c.team_id && S.teams.get(c.team_id) && S.teams.get(c.team_id).leader_id === S.me.id); }
@@ -21,7 +23,9 @@ V.kampania = {
     S.ui.kf = S.ui.kf || {who:'', st:''};
     const team = c.team_id && S.teams.get(c.team_id), m = canManage(c);
     return `<div class="vhead"><div><a href="#" data-go="kampanie" class="hint">← Kampanie</a><h1>${esc(c.name)}</h1><p class="sub">${esc(c.goal || '')}</p><p class="hint">${team ? 'Zespół: ' + esc(team.name) + ' · ' : ''}start ${esc(fmtDay(c.start_date))} · utworzył(a) ${esc(pname(c.created_by))}</p></div>
-      ${m ? `<div class="row">${c.status === 'active' ? `<button class="btn" data-act="campStatus" data-s="paused">Wstrzymaj</button>` : c.status === 'paused' ? `<button class="btn" data-act="campStatus" data-s="active">Wznów</button>` : ''}${c.status !== 'done' ? `<button class="btn" data-act="campStatus" data-s="done">Zakończ</button>` : `<button class="btn" data-act="campStatus" data-s="active">Otwórz ponownie</button>`}<button class="btn" data-act="campAdd">+ Dodaj firmy</button><button class="btn" data-act="campEdit">Edytuj treści</button></div>` : ''}</div>
+      ${m ? `<div class="row">${c.status === 'active' ? `<button class="btn" data-act="campStatus" data-s="paused">Wstrzymaj</button>` : c.status === 'paused' ? `<button class="btn" data-act="campStatus" data-s="active">Wznów</button>` : ''}${c.status === 'archived' ? '' : c.status !== 'done' ? `<button class="btn" data-act="campStatus" data-s="done">Zakończ</button>` : `<button class="btn" data-act="campStatus" data-s="active">Otwórz ponownie</button>`}${c.status !== 'archived' ? `<button class="btn" data-act="campAdd">+ Dodaj firmy</button><button class="btn" data-act="campEdit">Edytuj treści</button>` : ''}
+        ${c.status === 'archived' ? `<button class="btn" data-act="campStatus" data-s="done">Przywróć z archiwum</button>` : `<button class="btn ghost" data-act="campArchive">Archiwizuj</button>`}${isAdmin() || c.created_by === S.me.id ? `<button class="btn ghost danger" data-act="campDelete">Usuń</button>` : ''}</div>` : ''}</div>
+      ${c.status === 'archived' ? `<div class="box" style="border-color:var(--gold)">Kampania jest w archiwum. Jej firmy, które nie odpowiedziały, można już dodawać do innych kampanii.</div>` : ''}
       <div class="grid g4" id="kKpi"></div>
       <div class="box"><h3>Ścieżka kontaktu</h3><div id="kSteps" class="steps"></div></div>
       <div class="box"><div class="row between"><h3>Firmy w kampanii</h3><div class="row"><select id="kWho" style="width:auto"></select><select id="kSt" style="width:auto">${optList([['','Wszystkie stany'],['active','W toku'],['waiting','Czeka na odpowiedź'],['replied','Odpowiedzieli'],['stopped','Zamknięte']], S.ui.kf.st)}</select></div></div>
@@ -32,7 +36,7 @@ V.kampania = {
       const c = S.camps.get(S.arg); if (!c) return '';
       const ts = [...(S.targets.get(c.id) || new Map()).values()], st = s => ts.filter(t => { const f = S.firms.get(t.firm_id); return f && f.stage === s; }).length;
       const rep = ts.filter(t => t.state === 'replied').length, started = ts.filter(t => (t.step||0) > 0 || t.state !== 'active').length;
-      return [[ts.length,'firm w kampanii'],[started,'po pierwszym kontakcie'],[`${rep}${started ? ` (${Math.round(rep/started*100)}%)` : ''}`,'odpowiedzi'],[`${st('wspolpraca')} / ${st('odmowa')}`,'współprace / odmowy']].map(([v,l]) => `<div class="box kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+      return [[`${ts.length}${ts.some(t => !t.assignee) ? ` <small>(${ts.filter(t => !t.assignee).length} w puli)</small>` : ''}`,'firm w kampanii'],[started,'po pierwszym kontakcie'],[`${rep}${started ? ` (${Math.round(rep/started*100)}%)` : ''}`,'odpowiedzi'],[`${st('wspolpraca')} / ${st('odmowa')}`,'współprace / odmowy']].map(([v,l]) => `<div class="box kpi"><b>${v}</b><span>${l}</span></div>`).join('');
     },
     kSteps(){
       const c = S.camps.get(S.arg); if (!c) return ''; const ts = [...(S.targets.get(c.id) || new Map()).values()];
@@ -40,23 +44,34 @@ V.kampania = {
     },
     kRows(){
       const c = S.camps.get(S.arg); if (!c) return ''; const kf = S.ui.kf, m = canManage(c);
-      const ts = [...(S.targets.get(c.id) || new Map()).values()].filter(t => (!kf.who || t.assignee === kf.who) && (!kf.st || t.state === kf.st)).sort((a,b) => (a.due||'').localeCompare(b.due||''));
+      const ts = [...(S.targets.get(c.id) || new Map()).values()].filter(t => (!kf.who || (kf.who === 'pool' ? !t.assignee : t.assignee === kf.who)) && (!kf.st || t.state === kf.st)).sort((a,b) => (a.due||'').localeCompare(b.due||''));
       if (!ts.length) return `<tr><td colspan="5" class="hint">Brak firm dla tych filtrów.</td></tr>`;
       const team = c.team_id && S.teams.get(c.team_id), ids = team ? teamMembers(team) : null;
       return ts.slice(0, 500).map(t => { const f = S.firms.get(t.firm_id); if (!f) return '';
-        return `<tr><td><a href="#" data-act="openFirm" data-id="${esc(f.id)}">${esc(f.name)}</a>${pathHTML(c,t)}</td><td>${esc(pname(t.assignee))}</td><td>${esc(tState(t))}</td><td>${stagePill(f)}</td>
-          <td>${t.state === 'active' && t.assignee === S.me.id ? `<button class="btn sm pri" data-act="doStep" data-c="${esc(c.id)}" data-f="${esc(f.id)}">Kontakt</button>` : ''}${m ? ` <select class="reassign" data-f="${esc(f.id)}" aria-label="Przypisz" style="width:auto;padding:3px 6px;font-size:12px">${peopleOpts(t.assignee, 'przypisz…', ids)}</select>` : ''}</td></tr>`; }).join('');
+        return `<tr><td><a href="#" data-act="openFirm" data-id="${esc(f.id)}">${esc(f.name)}</a>${pathHTML(c,t)}</td><td>${t.assignee ? esc(pname(t.assignee)) : '<span class="pill s-">w puli</span>'}</td><td>${esc(tState(t))}</td><td>${stagePill(f)}</td>
+          <td>${!t.assignee && c.status === 'active' && canClaim(c) ? `<button class="btn sm gold" data-act="claimT" data-c="${esc(c.id)}" data-f="${esc(f.id)}">Biorę</button>` : ''}${t.state === 'active' && t.assignee === S.me.id ? `<button class="btn sm pri" data-act="doStep" data-c="${esc(c.id)}" data-f="${esc(f.id)}">Kontakt</button>` : ''}${m ? ` <select class="reassign" data-f="${esc(f.id)}" aria-label="Przypisz" style="width:auto;padding:3px 6px;font-size:12px">${peopleOpts(t.assignee, 'przypisz…', ids)}</select>` : ''}</td></tr>`; }).join('');
     }
   },
   after(){
     const kf = S.ui.kf, w = $('kWho'); if (!w) return;
-    w.innerHTML = `<option value="">Wszyscy</option>` + [...new Set([...(S.targets.get(S.arg) || new Map()).values()].map(t => t.assignee).filter(Boolean))].map(id => `<option value="${esc(id)}"${kf.who===id?' selected':''}>${esc(pname(id))}</option>`).join('');
+    w.innerHTML = `<option value="">Wszyscy</option><option value="pool"${kf.who==='pool'?' selected':''}>W puli (wolne)</option>` + [...new Set([...(S.targets.get(S.arg) || new Map()).values()].map(t => t.assignee).filter(Boolean))].map(id => `<option value="${esc(id)}"${kf.who===id?' selected':''}>${esc(pname(id))}</option>`).join('');
     w.addEventListener('input', () => { kf.who = w.value; refreshNow(); });
     $('kSt').addEventListener('input', () => { kf.st = $('kSt').value; refreshNow(); });
     $('kRows').addEventListener('change', e => { const s = e.target.closest('.reassign'); if (s && s.value) { setTarget(S.arg, s.dataset.f, {assignee:s.value}); updateFirm(s.dataset.f, {owner_id:s.value}); toast('Przypisano – osoba prowadzi całą firmę'); } });
   }
 };
 A.campStatus = async el => { const { error } = await sb.from('campaigns').update({status:el.dataset.s}).eq('id', S.arg); if (error) return dbErr(error); S.camps.get(S.arg).status = el.dataset.s; go('kampania', S.arg); toast('Zapisano'); };
+A.campArchive = async () => {
+  if (!confirm('Przenieść kampanię do archiwum? Zniknie z list zadań, a firmy bez odpowiedzi będzie można dodać do innych kampanii.')) return;
+  const { error } = await sb.from('campaigns').update({status:'archived'}).eq('id', S.arg); if (error) return dbErr(error);
+  S.camps.get(S.arg).status = 'archived'; toast('Kampania w archiwum'); go('kampanie');
+};
+A.campDelete = async () => {
+  const c = S.camps.get(S.arg);
+  if (!confirm(`Usunąć kampanię „${c.name}” na zawsze? Historia kontaktów z firmami zostanie, ale ścieżki i przypisania znikną.`)) return;
+  const { error } = await sb.from('campaigns').delete().eq('id', S.arg); if (error) return dbErr(error);
+  S.camps.delete(S.arg); S.targets.delete(S.arg); toast('Usunięto kampanię'); go('kampanie');
+};
 A.campAdd = () => { S.ui.nc = null; go('nowa', S.arg); };
 A.campEdit = () => {
   const c = S.camps.get(S.arg); S.ui.ce = JSON.parse(JSON.stringify(c.steps || []));
@@ -80,18 +95,18 @@ function ncState(){
   const base = S.arg && S.camps.get(S.arg), teams = ledTeams();
   S.ui.nc = {forCamp:S.arg || null, name: base ? base.name : '', goal: base ? base.goal : '', start: todayISO(), perDay:8,
     team: base ? (base.team_id || '') : (teams[0] ? teams[0].id : ''), steps: JSON.parse(JSON.stringify(base ? base.steps : PRESETS.standard.steps)),
-    f:{scope:true, sec:'', cat:'', z:'', stages:['nowa','wyslano','pozniej'], need:'any', excl:true, free:true, q:''}, removed:new Set(), people:null, mode:'owner'};
+    f:{scope:true, sec:'', cat:'', z:'', stages:['nowa','wyslano','pozniej'], need:'any', free:true, q:''}, removed:new Set(), people:null, mode:'pool'};
   return S.ui.nc;
 }
 function ncTeam(){ const n = S.ui.nc; return n.team ? S.teams.get(n.team) : null; }
 function ncAudience(){
   const n = S.ui.nc, f = n.f, team = ncTeam();
-  const busy = new Set(); if (f.excl) for (const [cid, m] of S.targets){ const c = S.camps.get(cid); if (c && c.status === 'active') for (const [fid, t] of m) if (t.state === 'active' || t.state === 'waiting') busy.add(fid); }
+  const busy = blockedFirms(n.forCamp);
   const inThis = n.forCamp ? new Set((S.targets.get(n.forCamp) || new Map()).keys()) : new Set();
   const q = fold(f.q).trim().split(/\s+/).filter(Boolean);
   return S.list.filter(x => (!f.scope || !team || inTeamScope(x, team)) && (!f.sec || x.sector === f.sec) && (!f.cat || x.category === f.cat) && (!f.z || x.reach === f.z) && f.stages.includes(stageGroup(x.stage))
     && (f.need !== 'email' || emailsIn(x.email).length) && (f.need !== 'social' || x.instagram || x.facebook || x.tiktok) && (f.need !== 'any' || emailsIn(x.email).length || x.instagram || x.facebook || x.phone)
-    && (!f.free || !x.owner_id || (team && teamMembers(team).includes(x.owner_id))) && !busy.has(x.id) && !inThis.has(x.id) && !n.removed.has(x.id) && q.every(w => x._t.includes(w)));
+    && (!f.free || !x.owner_id || !team || teamMembers(team).includes(x.owner_id)) && !busy.has(x.id) && !inThis.has(x.id) && !n.removed.has(x.id) && q.every(w => x._t.includes(w)));
 }
 function ncPeople(){ const n = S.ui.nc, team = ncTeam(); const ids = team ? teamMembers(team) : [S.me.id]; if (!n.people || n.peopleTeam !== n.team) { n.people = new Set(ids); n.peopleTeam = n.team; } return ids; }
 V.nowa = {
@@ -121,19 +136,21 @@ V.nowa = {
           <div class="field"><label class="lbl" for="naNeed">Wymagany kontakt</label><select id="naNeed">${optList([['any','jakikolwiek'],['email','ma e-mail'],['social','ma social media'],['','bez wymagań']], n.f.need)}</select></div>
         </div>
         <div class="row" id="naStages">${STAGES_UI.map(s => `<label class="chip"><input type="checkbox" value="${s.id}" ${n.f.stages.includes(s.id) ? 'checked' : ''}> ${esc(s.l)}</label>`).join('')}</div>
-        <label class="chk"><input type="checkbox" id="naExcl" ${n.f.excl ? 'checked' : ''}> pomiń firmy w toku w innej aktywnej kampanii</label>
         <label class="chk"><input type="checkbox" id="naFree" ${n.f.free ? 'checked' : ''}> pomiń firmy prowadzone przez osoby spoza zespołu</label>
         </details>
-        <div class="row between"><b id="naCount"></b><span class="hint">„×” wyklucza firmę.</span></div>
+        <div class="row between"><b id="naCount"></b><span class="hint">„×” wyklucza firmę.</span></div><p class="hint" id="naBlocked"></p>
         <div id="naList" class="list" style="max-height:420px;overflow-y:auto"></div></div>
-      <div class="box"><h3>${adding ? '2' : '4'} · Ludzie i tempo</h3>
+      <div class="box"><h3>${adding ? '2' : '4'} · Kto bierze firmy</h3>
+        <label class="chk"><input type="radio" name="ncMode" value="pool" ${n.mode === 'pool' ? 'checked' : ''}> <b>Członkowie zespołu sami biorą firmy na siebie</b> <span class="hint">– firmy trafiają do puli, każdy klika „Biorę” przy tych, którymi chce się zająć</span></label>
+        <label class="chk"><input type="radio" name="ncMode" value="even" ${n.mode !== 'pool' ? 'checked' : ''}> Rozdziel automatycznie po równo</label>
+        <p class="hint">Firmy, które ktoś z zespołu już prowadzi, od razu trafiają do tej osoby.</p>
+        <div id="ncAuto" ${n.mode === 'pool' ? 'hidden' : ''}>
         <div class="row" id="ncPeople"></div>
-        <details class="more"><summary>Tempo i podział firm</summary><div class="fgrid">
-          <div class="field"><label class="lbl" for="ncMode">Podział firm</label><select id="ncMode">${optList([['owner','Kto już prowadzi firmę, ten ją dostaje; resztę po równo'],['even','Po równo między wybranych']], n.mode)}</select></div>
+        <details class="more"><summary>Tempo</summary><div class="fgrid">
           <div class="field"><label class="lbl" for="ncPer">Nowych firm dziennie na osobę</label><input type="number" id="ncPer" min="1" max="100" value="${n.perDay}"></div>
           <div class="field"><label class="lbl" for="ncStart">Start</label><input type="date" id="ncStart" value="${esc(n.start)}"></div>
         </div>
-        </details><p class="hint">Każda osoba dostaje kilka nowych firm dziennie i prowadzi każdą z nich w całości (mail + social media).</p></div>
+        </details></div></div>
       <div class="row"><button class="btn pri" id="ncBtn" data-act="ncCreate">${adding ? 'Dodaj firmy' : 'Utwórz kampanię'}</button><span class="hint" id="ncProg"></span></div>`;
   },
   parts:{
@@ -157,6 +174,7 @@ V.nowa = {
     naList(){
       const rows = ncAudience(), team = ncTeam();
       if ($('naCount')) $('naCount').textContent = `${rows.length} firm`;
+      const nb = blockedFirms(S.ui.nc.forCamp).size; if ($('naBlocked')) $('naBlocked').textContent = nb ? `Pominięto ${nb} firm, które są w innej kampanii i jeszcze nie odpowiedziały. Odblokują się, gdy tamta kampania trafi do archiwum.` : '';
       if ($('naScopeInfo')) $('naScopeInfo').textContent = team ? `(${[...(team.sectors||[]), ...(team.categories||[])].join(', ') || 'zespół nie ma jeszcze kategorii'})` : '';
       return rows.length ? rows.slice(0, 150).map(f => `<div class="row between" style="border-bottom:1px solid var(--line);padding:5px 0"><span><b>${esc(f.name)}</b> <span class="hint">${esc(f.category||'')} · ${esc(STAGE[f.stage].l)}${emailsIn(f.email).length ? ' · e-mail' : ''}${igHandle(f) ? ' · IG' : ''}${f.owner_id ? ' · prowadzi ' + esc(pfirst(f.owner_id)) : ''}</span></span><button class="btn sm ghost" data-act="naRemove" data-id="${esc(f.id)}" aria-label="Wyklucz">×</button></div>`).join('') + (rows.length > 150 ? `<p class="hint">…i ${rows.length - 150} więcej</p>` : '') : `<div class="empty">Żadna firma nie pasuje – poluzuj filtry.</div>`;
     }
@@ -165,8 +183,8 @@ V.nowa = {
     const n = S.ui.nc; if (!n || !$('naQ')) return;
     const fillCat = () => { $('naCat').innerHTML = `<option value="">Wszystkie</option>` + optList(catsFor($('naSec').value).map(c => [c,c]), n.f.cat); };
     fillCat();
-    const upd = () => { Object.assign(n.f, {q:$('naQ').value, sec:$('naSec').value, cat:$('naCat').value, z:$('naZ').value, need:$('naNeed').value, excl:$('naExcl').checked, free:$('naFree').checked, scope:$('naScope').checked, stages:[...document.querySelectorAll('#naStages input:checked')].map(i => i.value)}); $('naList').innerHTML = V.nowa.parts.naList(); };
-    ['naQ','naCat','naZ','naNeed','naExcl','naFree','naScope'].forEach(id => $(id).addEventListener('input', upd));
+    const upd = () => { Object.assign(n.f, {q:$('naQ').value, sec:$('naSec').value, cat:$('naCat').value, z:$('naZ').value, need:$('naNeed').value, free:$('naFree').checked, scope:$('naScope').checked, stages:[...document.querySelectorAll('#naStages input:checked')].map(i => i.value)}); $('naList').innerHTML = V.nowa.parts.naList(); };
+    ['naQ','naCat','naZ','naNeed','naFree','naScope'].forEach(id => $(id).addEventListener('input', upd));
     $('naSec').addEventListener('input', () => { n.f.cat = ''; fillCat(); upd(); });
     $('naStages').addEventListener('change', upd);
     $('ncPeople').addEventListener('change', e => { const c = e.target.closest('[data-person]'); if (c) { if (c.checked) n.people.add(c.dataset.person); else n.people.delete(c.dataset.person); } });
@@ -180,7 +198,7 @@ V.nowa = {
       st.addEventListener('change', e => { const el = e.target; if (el.dataset.ch) { const s = n.steps[+el.dataset.i]; s.channels = el.checked ? [...new Set([...s.channels, el.dataset.ch])] : s.channels.filter(c => c !== el.dataset.ch); if (!s.channels.length) s.channels = ['email']; st.innerHTML = V.nowa.parts.ncSteps(); $('ncPathSum').innerHTML = V.nowa.parts.ncPathSum(); } });
       st.addEventListener('focusin', e => { if (e.target.matches('textarea,input[type=text]')) S.ui.lastField = e.target; });
     }
-    $('ncMode').addEventListener('input', e => n.mode = e.target.value);
+    document.querySelectorAll('[name=ncMode]').forEach(r => r.addEventListener('change', e => { n.mode = e.target.value; $('ncAuto').hidden = n.mode === 'pool'; }));
     $('ncPer').addEventListener('input', e => n.perDay = Math.max(1, +e.target.value || 8));
     $('ncStart').addEventListener('input', e => n.start = e.target.value || todayISO());
   }
@@ -204,7 +222,8 @@ A.ncCreate = async el => {
   const people = [...n.people].filter(id => S.profiles.has(id));
   if (!n.forCamp && !n.name.trim()) { toast('Nadaj kampanii nazwę.'); return; }
   if (!rows.length) { toast('Wybierz co najmniej jedną firmę.'); return; }
-  if (!people.length) { toast('Zaznacz osoby, które będą prowadzić firmy.'); return; }
+  const pool = n.mode === 'pool', team = ncTeam(), teamIds = team ? teamMembers(team) : [...S.profiles.keys()];
+  if (!pool && !people.length) { toast('Zaznacz osoby, które będą prowadzić firmy.'); return; }
   el.disabled = true; let cid = n.forCamp;
   if (!cid){
     const steps = n.steps.map(s => ({day:+s.day||0, channels:s.channels, label:s.label||'', subject:s.subject||'', body:s.body||'', dm:s.dm||'', script:s.script||''})).sort((a,b) => a.day - b.day);
@@ -215,8 +234,10 @@ A.ncCreate = async el => {
   const load = Object.fromEntries(people.map(id => [id, 0])); let rr = 0;
   const targets = [], owners = [];
   for (const f of rows){
-    let who = n.mode === 'owner' && f.owner_id && people.includes(f.owner_id) ? f.owner_id : null;
+    let who = f.owner_id && (pool ? teamIds.includes(f.owner_id) : people.includes(f.owner_id)) ? f.owner_id : null;
+    if (pool) { targets.push({campaign_id:cid, firm_id:f.id, assignee:who, step:0, due:n.start || todayISO(), state:'active'}); continue; }
     if (!who) { who = people[rr % people.length]; rr++; }
+    if (load[who] === undefined) load[who] = 0;
     const day = Math.floor(load[who] / Math.max(1, n.perDay)); load[who]++;
     targets.push({campaign_id:cid, firm_id:f.id, assignee:who, step:0, due:addDays(n.start || todayISO(), day), state:'active'});
     if (f.owner_id !== who) owners.push([f.id, who, f.stage]);
@@ -231,7 +252,7 @@ A.ncCreate = async el => {
   for (const k in byOwner){ const [who, stage] = k.split('|'); const ids = byOwner[k];
     for (let i = 0; i < ids.length; i += 200){ const { error } = await sb.from('firms').update({owner_id:who, stage}).in('id', ids.slice(i, i + 200)); if (error) dbErr(error, 'owners'); }
     ids.forEach(id => { const f = S.firms.get(id); if (f) { f.owner_id = who; f.stage = stage; } }); }
-  S.ui.nc = null; toast(`Gotowe – ${rows.length} firm w kampanii`); go('kampania', cid);
+  S.ui.nc = null; toast(pool ? `Gotowe – ${rows.length} firm w puli. Zespół może je teraz brać.` : `Gotowe – ${rows.length} firm w kampanii`); go('kampania', cid);
 };
 
 /* ================= SZABLONY ================= */

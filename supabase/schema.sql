@@ -80,7 +80,7 @@ create table if not exists public.campaigns (
   name text not null,
   goal text not null default '',
   steps jsonb not null default '[]',        -- [{day, channels:[...], label, subject, body, dm, script}]
-  status text not null default 'active' check (status in ('active','paused','done')),
+  status text not null default 'active' check (status in ('active','paused','done','archived')),
   team_id uuid references public.teams(id) on delete set null,
   start_date date not null default current_date,
   created_by uuid references public.profiles(id) on delete set null,

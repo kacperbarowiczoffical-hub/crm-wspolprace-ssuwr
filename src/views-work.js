@@ -4,6 +4,21 @@ import { S, V, A, $, esc, enc, fold, keyOf, slug, rid, todayISO, addDays, fmtDay
   allTpls, tplById, fillVars, outlookUrl, AI_TOOLS, contactPrompt, parseAiAnswer, sb, dbErr, splitContact } from './core.js';
 
 /* ================= wspólne ================= */
+/* firmy, które są w innej (niezarchiwizowanej) kampanii i nie odpowiedziały – nie trafiają do kolejnych */
+export function blockedFirms(exceptCid){
+  const out = new Set();
+  for (const [cid, m] of S.targets){ if (cid === exceptCid) continue; const c = S.camps.get(cid); if (!c || c.status === 'archived') continue;
+    for (const [fid, t] of m) if (t.state !== 'replied') out.add(fid); }
+  return out;
+}
+export function canClaim(c){ return isLead() || !c.team_id || myTeams().some(t => t.id === c.team_id); }
+/* pula: firmy z kampanii bez przypisanej osoby, do wzięcia przez członków zespołu */
+export function poolList(){
+  const out = [];
+  for (const [cid, m] of S.targets){ const c = S.camps.get(cid); if (!c || c.status !== 'active' || !canClaim(c)) continue;
+    for (const [fid, t] of m){ if (t.assignee || t.state !== 'active') continue; const f = S.firms.get(fid); if (f && !f.deleted) out.push({c, cid, f, t}); } }
+  return out.sort((a,b) => a.f.name.localeCompare(b.f.name,'pl'));
+}
 export function myQueue(uid){
   uid = uid === undefined ? S.me.id : uid; const out = [];
   for (const [cid, m] of S.targets){
@@ -79,7 +94,7 @@ export function campRow(c){
   const ts = [...(S.targets.get(c.id) || new Map()).values()], n = ts.length || 1, cnt = st => ts.filter(t => t.state === st).length;
   const won = ts.filter(t => { const f = S.firms.get(t.firm_id); return f && f.stage === 'wspolpraca'; }).length;
   const started = ts.filter(t => (t.step||0) > 0 || t.state !== 'active').length;
-  const mineToday = ts.filter(t => t.assignee === S.me.id && t.state === 'active' && t.due <= todayISO()).length;
+  const mineToday = c.status !== 'active' ? 0 : ts.filter(t => t.assignee === S.me.id && t.state === 'active' && t.due <= todayISO()).length;
   const team = c.team_id && S.teams.get(c.team_id);
   return `<div class="card click b-act" data-go="kampania" data-arg="${esc(c.id)}">
     <div class="top"><span class="name">${esc(c.name)}</span><span class="row">${mineToday ? `<span class="pill s-act">${mineToday} dla Ciebie dziś</span>` : ''}<span class="hint">${team ? esc(team.name) + ' · ' : ''}${ts.length} firm</span></span></div>
@@ -95,7 +110,7 @@ V.zadania = {
       <div class="subtabs" id="qTabs"></div><div class="list" id="qList"></div>`; },
   parts:{
     qSub(){ const q = myQueue(), t = todayISO(), n = q.filter(x => x.t.due <= t).length, later = q.filter(x => x.t.due > t && x.t.due <= addDays(t, 7)).length;
-      return n ? `Na dziś masz <b>${n}</b> ${n === 1 ? 'firmę' : n < 5 ? 'firmy' : 'firm'} do kontaktu.${later ? ` W tym tygodniu jeszcze ${later}.` : ''}` : later ? `Na dziś nic. W tym tygodniu czeka ${later} firm.` : 'Na dziś nic do zrobienia.'; },
+      return n ? `Na dziś masz <b>${n}</b> ${n === 1 ? 'firmę' : n < 5 ? 'firmy' : 'firm'} do kontaktu.${later ? ` W tym tygodniu jeszcze ${later}.` : ''}` : later ? `Na dziś nic. W tym tygodniu czeka ${later} firm.` : poolList().length ? `Na dziś nic. W puli czeka <b>${poolList().length}</b> firm do wzięcia.` : 'Na dziś nic do zrobienia.'; },
     qNext(){
       const x = myQueue().find(y => y.t.due <= todayISO());
       if (!x) return '';
@@ -108,21 +123,43 @@ V.zadania = {
     },
     qTabs(){
       const t = todayISO(), q = myQueue();
-      const c = {today:q.filter(x => x.t.due <= t).length, wait:waiting().length, mine:S.list.filter(f => f.owner_id === S.me.id).length};
-      return [['today','Na dziś'],['wait','Czekam na odpowiedź'],['mine','Moje firmy']].map(([k,l]) => `<button data-act="qtab" data-k="${k}" aria-selected="${S.ui.qtab===k}">${l} · ${c[k]}</button>`).join('');
+      const c = {today:q.filter(x => x.t.due <= t).length, pool:poolList().length, wait:waiting().length, mine:S.list.filter(f => f.owner_id === S.me.id).length};
+      return [['today','Na dziś'],['pool','Do wzięcia'],['wait','Czekam na odpowiedź'],['mine','Moje firmy']].filter(([k]) => k !== 'pool' || c.pool).map(([k,l]) => `<button data-act="qtab" data-k="${k}" aria-selected="${S.ui.qtab===k}">${l} · ${c[k]}</button>`).join('');
     },
     qList(){
       const t = todayISO(), tab = S.ui.qtab;
       if (tab === 'mine'){ const f = S.list.filter(x => x.owner_id === S.me.id).sort((a,b) => (a.last_contact||'').localeCompare(b.last_contact||'')); return f.length ? f.map(x => firmCard(x)).join('') : `<div class="empty">Nie prowadzisz jeszcze żadnej firmy. Otwórz firmę w zakładce „Firmy” i kliknij „Biorę tę firmę”.</div>`; }
+      if (tab === 'pool'){ const pl = poolList(); S.ui.poolQ = S.ui.poolQ || ''; const w = fold(S.ui.poolQ).trim().split(/\s+/).filter(Boolean);
+        const shown = pl.filter(x => w.every(y => x.f._t.includes(y)));
+        return `<p class="hint">Firmy z kampanii Twojego zespołu, których nikt jeszcze nie wziął. Kliknij „Biorę” – firma będzie Twoja i pojawi się w „Na dziś”.</p>
+          <input type="search" class="bigsearch" id="poolQ" value="${esc(S.ui.poolQ)}" placeholder="Szukaj w puli…">`
+          + (shown.length ? shown.slice(0, 120).map(poolCard).join('') + (shown.length > 120 ? `<p class="hint">…i ${shown.length - 120} więcej – zawęź wyszukiwanie.</p>` : '') : `<div class="empty">Pula jest pusta.</div>`); }
       if (tab === 'wait'){ const w = waiting(); return w.length ? w.map(x => queueCard(x, true)).join('') : `<div class="empty">Nie czekasz na żadne odpowiedzi.</div>`; }
       const q = myQueue().filter(x => x.t.due <= t);
-      return q.length ? q.map(x => queueCard(x)).join('') : `<div class="empty">Wszystko zrobione na dziś. 🎉<br><span class="hint">Nowe firmy dostajesz w kampaniach. Możesz też sam wybrać firmę w zakładce „Firmy”.</span></div>`;
+      const pn = poolList().length;
+      return q.length ? q.map(x => queueCard(x)).join('') : `<div class="empty">Wszystko zrobione na dziś. 🎉<br>${pn ? `<button class="btn gold" data-act="qtab" data-k="pool">Weź firmy z puli (${pn}) →</button>` : `<span class="hint">Nowe firmy pojawią się, gdy lider doda kampanię.</span>`}</div>`;
     }
   }
 };
 A.qtab = el => { S.ui.qtab = el.dataset.k; refreshNow(); };
+document.addEventListener('input', e => { if (e.target.id !== 'poolQ') return; S.ui.poolQ = e.target.value; const pos = e.target.selectionStart; refreshNow(); const j = $('poolQ'); if (j) { j.focus(); j.setSelectionRange(pos, pos); } });
+function poolCard(x){
+  const {c, cid, f} = x;
+  return `<div class="card b-act"><div class="top"><span class="name"><a href="#" data-act="openFirm" data-id="${esc(f.id)}">${esc(f.name)}</a></span><span class="hint">${esc(c.name)}</span></div>
+    <div class="meta"><span>${esc(f.category || f.sector || '')}</span>${f.address ? `<span>${esc(f.address)}</span>` : ''}</div>${contactLine(f)}
+    <div class="row"><button class="btn gold sm" data-act="claimT" data-c="${esc(cid)}" data-f="${esc(f.id)}">Biorę</button></div></div>`;
+}
+export async function claimTarget(cid, fid){
+  const { data, error } = await sb.rpc('claim_target', {p_campaign:cid, p_firm:fid});
+  if (error) { toast(error.message); return false; }
+  if (!data) { toast('Ktoś już wziął tę firmę.'); const { data:row } = await sb.from('campaign_targets').select('*').eq('campaign_id', cid).eq('firm_id', fid).maybeSingle(); if (row) S.targets.get(cid).set(fid, row); refreshNow(); return false; }
+  const t = S.targets.get(cid).get(fid); t.assignee = S.me.id; if (t.due < todayISO()) t.due = todayISO();
+  const f = S.firms.get(fid); if (f && !f.owner_id) f.owner_id = S.me.id;
+  return true;
+}
+A.claimT = async el => { el.disabled = true; if (await claimTarget(el.dataset.c, el.dataset.f)) { logAct({type:'claim', firm_id:el.dataset.f, campaign_id:el.dataset.c, summary:'Wziął(-ęła) firmę z puli kampanii'}); toast('Firma jest Twoja – znajdziesz ją w „Na dziś”'); refreshNow(); } else el.disabled = false; };
 A.startFlow = el => { S.ui.flow = true; A.doStep(el); };
-function waiting(){ const out = []; for (const [cid, m] of S.targets){ const c = S.camps.get(cid); if (!c) continue; for (const [fid, t] of m) if (t.state === 'waiting' && t.assignee === S.me.id){ const f = S.firms.get(fid); if (f) out.push({c, cid, f, t, step:null}); } } return out.sort((a,b) => (a.t.last||'').localeCompare(b.t.last||'')); }
+function waiting(){ const out = []; for (const [cid, m] of S.targets){ const c = S.camps.get(cid); if (!c || c.status === 'archived') continue; for (const [fid, t] of m) if (t.state === 'waiting' && t.assignee === S.me.id){ const f = S.firms.get(fid); if (f) out.push({c, cid, f, t, step:null}); } } return out.sort((a,b) => (a.t.last||'').localeCompare(b.t.last||'')); }
 function queueCard(x, isWaiting){
   const {c, cid, f, t, step} = x, d = isWaiting ? {t:`ostatni kontakt ${fmtDay(t.last)}`} : dueLabel(t.due);
   return `<div class="card ${d.late ? 'b-late' : 'b-act'}">
@@ -378,7 +415,9 @@ V.__drawer = () => {
   $('dTimeline').innerHTML = all.length ? all.map(a => actLine(a)).join('') : `<div class="hint">Nie było jeszcze kontaktu z tą firmą.</div>`;
 };
 A.contactFirm = el => openContact({firm:el.dataset.f});
-A.claim = async el => { const id = el.dataset.f; if (await updateFirm(id, {owner_id:S.me.id})) { logAct({type:'claim', firm_id:id, summary:'Przejął(-ęła) kontakt z firmą'}); toast('Prowadzisz teraz tę firmę'); } };
+A.claim = async el => { const id = el.dataset.f;
+  for (const x of poolList().filter(y => y.f.id === id)) await claimTarget(x.cid, id);
+  if (await updateFirm(id, {owner_id:S.me.id})) { logAct({type:'claim', firm_id:id, summary:'Przejął(-ęła) kontakt z firmą'}); toast('Prowadzisz teraz tę firmę'); } };
 A.release = async el => { if (await updateFirm(el.dataset.f, {owner_id:null})) toast('Oddano firmę'); };
 A.note = el => {
   const f = S.firms.get(el.dataset.f); S.ui.la = f.id;
@@ -399,6 +438,7 @@ A.toCamp = el => {
   const f = S.firms.get(el.dataset.f); S.ui.tc = f.id;
   const cs = [...S.camps.values()].filter(c => c.status === 'active');
   if (!cs.length) { toast('Brak aktywnych kampanii.'); return; }
+  if (blockedFirms(null).has(f.id)) { toast('Ta firma jest w innej kampanii i jeszcze nie odpowiedziała – nie można jej dodać do kolejnej.'); return; }
   openModal(`<div class="row"><h2>Dodaj do kampanii · ${esc(f.name)}</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
     <div class="fgrid"><div class="field"><label class="lbl" for="tcCamp">Kampania</label><select id="tcCamp">${optList(cs.map(c => [c.id, c.name]), cs[0].id)}</select></div>
     <div class="field"><label class="lbl" for="tcWho">Kto prowadzi</label>${isLead() ? `<select id="tcWho">${peopleOpts(f.owner_id || S.me.id, '— wybierz —')}</select>` : `<input type="text" id="tcWho" value="${esc(pname(S.me.id))}" disabled>`}</div></div>
