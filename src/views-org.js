@@ -279,7 +279,7 @@ V.ustawienia = {
   html(){
     if (!isAdmin()) return `<div class="empty">Tylko dla administratorów głównych.</div>`;
     return `<div class="vhead"><div><h1>Ustawienia</h1><p class="sub">DW w mailach, kategorie, import firm i domeny logowania.</p></div></div>
-      <div class="box"><h3>Kopia maili (DW)</h3><p class="hint">Ten adres trafia do pola „DW” w każdym mailu otwieranym z aplikacji w Outlooku. Zostaw puste, żeby wyłączyć.</p>
+      <div class="box"><h3>Kopia maili (DW)</h3><p class="hint">Ten adres dostaje kopię każdego maila otwieranego z aplikacji. W Outlooku w przeglądarce trafia do pola „Do” (Outlook nie pozwala wypełnić „DW” z linku), w aplikacji Outlook na komputerze – do „DW”. Zostaw puste, żeby wyłączyć.</p>
         <input type="email" id="cfgCc" value="${esc(S.cfg.cc_email || '')}" placeholder="np. marketingssuwr@gmail.com"><div class="row"><button class="btn" data-act="saveCc">Zapisz</button></div></div>
       <div class="box"><div class="row between"><h3>Kategorie dodane w aplikacji</h3><button class="btn" data-act="catNew">+ Nowa kategoria</button></div>
         <p class="hint">Pozostałe kategorie biorą się z firm w bazie. Nowe kategorie widać w filtrach Firm, w kampaniach i przy zespołach.</p>
@@ -305,7 +305,7 @@ A.saveCc = async () => {
   const v = $('cfgCc').value.trim().toLowerCase();
   if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return toast('Wpisz poprawny adres');
   const { error } = await sb.from('app_config').update({cc_email:v}).eq('id', 1); if (error) return dbErr(error);
-  S.cfg.cc_email = v; toast(v ? 'Zapisano – nowe maile pójdą z DW: ' + v : 'Wyłączono DW');
+  S.cfg.cc_email = v; toast(v ? 'Zapisano – kopia maili pójdzie na: ' + v : 'Wyłączono kopię maili');
 };
 A.saveDomains = async () => {
   const d = $('cfgDom').value.split(/[,;\s]+/).map(x => x.trim().toLowerCase().replace(/^@/,'')).filter(Boolean);

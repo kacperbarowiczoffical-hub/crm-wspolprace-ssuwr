@@ -322,7 +322,10 @@ export function outlookUrl(to, subject, body){
   const kind = (S.me && S.me.outlook_kind) || 'web', cc = ccEmail();
   if (kind === 'app') return `mailto:${to.split(/[;,]/).map(s => s.trim()).filter(Boolean).join(',')}?${cc ? `cc=${enc(cc)}&` : ''}subject=${enc(subject)}&body=${enc(body)}`;
   const base = kind === 'live' ? 'https://outlook.live.com/mail/0/deeplink/compose' : 'https://outlook.office.com/mail/deeplink/compose';
-  return `${base}?to=${enc(to)}${cc ? `&cc=${enc(cc)}` : ''}&subject=${enc(subject)}&body=${enc(body)}`;
+  // Outlook w przeglądarce ignoruje cc= w linku, więc adres kopii dopisujemy do pola „Do”
+  const list = to.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+  if (cc && !list.some(x => x.toLowerCase() === cc.toLowerCase())) list.push(cc);
+  return `${base}?to=${enc(list.join(','))}&subject=${enc(subject)}&body=${enc(body)}`;
 }
 
 /* ================= prompty do darmowego AI ================= */
