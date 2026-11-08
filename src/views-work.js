@@ -11,7 +11,7 @@ export function blockedFirms(exceptCid){
     for (const [fid, t] of m) if (t.state !== 'replied') out.add(fid); }
   return out;
 }
-export function canClaim(c){ return isLead() || !c.team_id || myTeams().some(t => t.id === c.team_id); }
+export function canClaim(c){ return !!c && c.status === 'active'; } // z puli może brać każdy aktywny członek
 /* pula: firmy z kampanii bez przypisanej osoby, do wzięcia przez członków zespołu */
 export function poolList(){
   const out = [];
@@ -154,7 +154,7 @@ export async function claimTarget(cid, fid){
   if (error) { toast(error.message); return false; }
   if (!data) { toast('Ktoś już wziął tę firmę.'); const { data:row } = await sb.from('campaign_targets').select('*').eq('campaign_id', cid).eq('firm_id', fid).maybeSingle(); if (row) S.targets.get(cid).set(fid, row); refreshNow(); return false; }
   const t = S.targets.get(cid).get(fid); t.assignee = S.me.id; if (t.due < todayISO()) t.due = todayISO();
-  const f = S.firms.get(fid); if (f && !f.owner_id) f.owner_id = S.me.id;
+  const f = S.firms.get(fid); if (f) f.owner_id = S.me.id;
   return true;
 }
 A.claimT = async el => { el.disabled = true; if (await claimTarget(el.dataset.c, el.dataset.f)) { logAct({type:'claim', firm_id:el.dataset.f, campaign_id:el.dataset.c, summary:'Wziął(-ęła) firmę z puli kampanii'}); toast('Firma jest Twoja – znajdziesz ją w „Na dziś”'); refreshNow(); } else el.disabled = false; };

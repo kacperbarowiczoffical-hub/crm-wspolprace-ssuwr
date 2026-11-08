@@ -141,7 +141,7 @@ V.nowa = {
         <div class="row between"><b id="naCount"></b><span class="hint">„×” wyklucza firmę.</span></div><p class="hint" id="naBlocked"></p>
         <div id="naList" class="list" style="max-height:420px;overflow-y:auto"></div></div>
       <div class="box"><h3>${adding ? '2' : '4'} · Kto bierze firmy</h3>
-        <label class="chk"><input type="radio" name="ncMode" value="pool" ${n.mode === 'pool' ? 'checked' : ''}> <b>Członkowie zespołu sami biorą firmy na siebie</b> <span class="hint">– firmy trafiają do puli, każdy klika „Biorę” przy tych, którymi chce się zająć</span></label>
+        <label class="chk"><input type="radio" name="ncMode" value="pool" ${n.mode === 'pool' ? 'checked' : ''}> <b>Każdy sam bierze firmy na siebie</b> <span class="hint">– firmy trafiają do puli, każdy klika „Biorę” przy tych, którymi chce się zająć</span></label>
         <label class="chk"><input type="radio" name="ncMode" value="even" ${n.mode !== 'pool' ? 'checked' : ''}> Rozdziel automatycznie po równo</label>
         <p class="hint">Firmy, które ktoś z zespołu już prowadzi, od razu trafiają do tej osoby.</p>
         <div id="ncAuto" ${n.mode === 'pool' ? 'hidden' : ''}>
@@ -235,7 +235,7 @@ A.ncCreate = async el => {
   const targets = [], owners = [];
   for (const f of rows){
     let who = f.owner_id && (pool ? teamIds.includes(f.owner_id) : people.includes(f.owner_id)) ? f.owner_id : null;
-    if (pool) { targets.push({campaign_id:cid, firm_id:f.id, assignee:who, step:0, due:n.start || todayISO(), state:'active'}); continue; }
+    if (pool) { targets.push({campaign_id:cid, firm_id:f.id, assignee:null, step:0, due:n.start || todayISO(), state:'active'}); continue; } // pula: każdy sam bierze firmy
     if (!who) { who = people[rr % people.length]; rr++; }
     if (load[who] === undefined) load[who] = 0;
     const day = Math.floor(load[who] / Math.max(1, n.perDay)); load[who]++;
