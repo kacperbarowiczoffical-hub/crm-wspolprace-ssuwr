@@ -45,17 +45,17 @@ function domainOk(email){
 }
 function loginScreen(msg){
   authScreen(`<h1>Zaloguj się</h1><p class="sub">Login i hasło dostajesz od administratora komisji. Po pierwszym logowaniu zmień hasło w profilu.</p>
-    <form id="fPass" class="stack"><div class="field"><label class="lbl" for="pEmail">Adres e-mail</label><input type="email" id="pEmail" autocomplete="username" required placeholder="imie.nazwisko@uwr.edu.pl"></div>
+    <form id="fPass" class="stack"><div class="field"><label class="lbl" for="pEmail">Adres e-mail</label><input type="email" id="pEmail" autocomplete="username" required placeholder="numer-indeksu@student.uwr.edu.pl"></div>
     <div class="field"><label class="lbl" for="pPass">Hasło</label><input type="password" id="pPass" autocomplete="current-password" required></div>
     <button class="btn pri" type="submit" id="pBtn">Zaloguj</button><p class="hint" id="pMsg">${esc(msg || 'Nie masz konta albo zapomniałeś hasła? Napisz do administratora komisji.')}</p>
-    <p class="hint"><a href="#" id="pOtp">Zaloguj linkiem z maila</a></p></form>`);
+    <p class="hint"><a href="#" id="pOtp">Zaloguj linkiem z maila</a></p>${storageOk() ? '' : '<p class="hint" style="color:var(--red,#b42318)">Twoja przeglądarka blokuje zapisywanie danych tej strony (ciasteczka / dane witryn), więc po odświeżeniu trzeba będzie zalogować się ponownie. Zezwól na dane witryny dla crm-wspolprace-ssuwr.vercel.app albo użyj innej przeglądarki.</p>'}</form>`);
   $('pOtp').addEventListener('click', e => { e.preventDefault(); otpScreen($('pEmail').value.trim().toLowerCase()); });
   $('fPass').addEventListener('submit', async e => {
     e.preventDefault(); $('pBtn').disabled = true;
-    const { error } = await sb.auth.signInWithPassword({email:$('pEmail').value.trim().toLowerCase(), password:$('pPass').value});
+    const { data, error } = await sb.auth.signInWithPassword({email:$('pEmail').value.trim().toLowerCase(), password:$('pPass').value});
     $('pBtn').disabled = false;
     if (error) { $('pMsg').textContent = 'Nieprawidłowy e-mail albo hasło.'; return; }
-    location.reload();
+    startSession(data.session);
   });
 }
 function otpScreen(email){
@@ -82,9 +82,9 @@ function codeScreen(email){
   $('cBack').addEventListener('click', e => { e.preventDefault(); loginScreen(); });
   $('fCode').addEventListener('submit', async e => {
     e.preventDefault();
-    const { error } = await sb.auth.verifyOtp({email, token:$('lCode').value.trim(), type:'email'});
+    const { data, error } = await sb.auth.verifyOtp({email, token:$('lCode').value.trim(), type:'email'});
     if (error) { $('cMsg').textContent = 'Kod jest nieprawidłowy albo wygasł. Wyślij nowy.'; return; }
-    location.reload();
+    startSession(data.session);
   });
 }
 function pendingScreen(){
@@ -102,8 +102,18 @@ async function boot(){
   const cfg = await sb.from('app_config').select('*').eq('id', 1).maybeSingle();
   if (cfg.data) S.cfg = cfg.data;
   const { data:{ session } } = await sb.auth.getSession();
-  sb.auth.onAuthStateChange((ev, s) => { if (ev === 'SIGNED_IN' && !S.session && s) location.reload(); if (ev === 'SIGNED_OUT') location.reload(); });
+  sb.auth.onAuthStateChange((ev, s) => {
+    if (ev === 'SIGNED_IN' && s && !S.session) setTimeout(() => startSession(s), 0);
+    if (ev === 'SIGNED_OUT' && S.session) location.reload();
+  });
   if (!session) return loginScreen();
+  return startSession(session);
+}
+function storageOk(){ try { localStorage.setItem('crm-t', '1'); localStorage.removeItem('crm-t'); return true; } catch(e){ return false; } }
+let starting = false;
+async function startSession(session){
+  if (!session || starting || S.session) return;
+  starting = true;
   S.session = session;
   const { data:me, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
   if (error || !me) { authScreen(`<h1>Nie udało się wczytać konta</h1><p class="sub">Spróbuj odświeżyć stronę. Jeśli problem wraca, napisz do administratora komisji.</p><button class="btn" onclick="location.reload()">Odśwież</button>`); return; }
