@@ -11,7 +11,7 @@ V.wiecej = {
       ['pulpit','Statystyki komisji','Wyniki z ostatnich 30 dni i ostatnie kontakty'],
       ['narzedzia','Szukanie nowych firm','Sprawdź, czy firma jest w bazie, znajdź nowe firmy i maile'],
       ['szablony','Szablony wiadomości','Gotowe maile i wiadomości do social mediów'],
-      ['struktura','Zespoły i ludzie', isAdmin() ? 'Dodawaj osoby, twórz zespoły, nadawaj role' : 'Kto jest w jakim zespole'],
+      ['struktura','Zespoły i ludzie', isAdmin() ? 'Dodawaj osoby, twórz zespoły, nadawaj role' : isLead() ? 'Twórz zespoły i dodawaj do nich ludzi' : 'Kto jest w jakim zespole'],
       ['profil','Mój profil','Imię, podpis maila, hasło'],
       ...(isAdmin() ? [['ustawienia','Ustawienia','Import firm z Excela, eksport, domeny logowania']] : [])
     ];
@@ -26,7 +26,7 @@ V.wiecej = {
 V.struktura = {
   nav:'wiecej',
   html(){
-    return `<div class="vhead"><div><h1>Struktura komisji</h1><p class="sub">Administratorzy główni zarządzają całą komisją. Liderzy prowadzą zespoły, a każdy zespół odpowiada za jedną lub kilka kategorii firm.</p></div>${isAdmin() ? `<div class="row"><button class="btn pri" data-act="userNew">+ Dodaj osobę</button><button class="btn" data-act="teamNew">+ Nowy zespół</button></div>` : ''}</div>
+    return `<div class="vhead"><div><h1>Struktura komisji</h1><p class="sub">Administratorzy główni zarządzają całą komisją. Liderzy prowadzą zespoły, a każdy zespół odpowiada za jedną lub kilka kategorii firm.</p></div>${isLead() ? `<div class="row">${isAdmin() ? '<button class="btn pri" data-act="userNew">+ Dodaj osobę</button>' : ''}<button class="btn" data-act="teamNew">+ Nowy zespół</button></div>` : ''}</div>
       <div id="sPending"></div>
       <div class="box"><h3>Administratorzy główni</h3><div class="row" id="sAdmins"></div></div>
       <div class="grid g2" id="sTeams"></div>
@@ -43,10 +43,10 @@ V.struktura = {
     sAdmins(){ const a = [...S.profiles.values()].filter(x => x.role === 'admin' && x.status === 'active'); return a.map(x => `<span class="chip">${avatarHTML(x.id)} ${esc(x.full_name || x.email)}</span>`).join('') || '<span class="hint">—</span>'; },
     sTeams(){
       const ts = [...S.teams.values()].sort((a,b) => a.name.localeCompare(b.name,'pl'));
-      if (!ts.length) return `<div class="empty">Nie ma jeszcze zespołów.${isAdmin() ? ' Utwórz pierwszy zespół i przypisz mu kategorie.' : ''}</div>`;
+      if (!ts.length) return `<div class="empty">Nie ma jeszcze zespołów.${isLead() ? ' Utwórz pierwszy zespół i przypisz mu kategorie.' : ''}</div>`;
       return ts.map(t => {
         const mem = teamMembers(t), scope = S.list.filter(f => inTeamScope(f, t));
-        const canEdit = isAdmin() || t.leader_id === S.me.id;
+        const canEdit = canEditTeam(t);
         return `<div class="box"><div class="row between"><h2>${esc(t.name)}</h2>${canEdit ? `<button class="btn sm" data-act="teamEdit" data-id="${esc(t.id)}">Edytuj</button>` : ''}</div>
           <div>Lider: <b>${esc(t.leader_id ? pname(t.leader_id) : 'brak')}</b></div>
           <div class="row">${(t.sectors||[]).map(s => `<span class="pill s-act">${esc(s)} (cały sektor)</span>`).join('')}${(t.categories||[]).map(c => `<span class="pill s-">${esc(c)}</span>`).join('') || (!(t.sectors||[]).length ? '<span class="hint">Brak kategorii</span>' : '')}</div>
@@ -119,10 +119,16 @@ A.userPass = async el => {
   openModal(`<div class="row"><h2>Nowe hasło</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>${credsBox(p.email, pass)}`);
 };
 A.teamFirms = el => { S.ui.ff = {limit:60, team:el.dataset.id}; go('firmy'); };
-A.teamNew = () => teamForm(null);
-A.teamEdit = el => teamForm(S.teams.get(el.dataset.id));
+// Admin edytuje każdy zespół; lider tylko te, które sam prowadzi (nie prowadzone przez admina).
+function canEditTeam(t){
+  if (isAdmin()) return true;
+  if (!isLead() || t.leader_id !== S.me.id) return false;
+  const l = S.profiles.get(t.leader_id); return !l || l.role !== 'admin';
+}
+A.teamNew = () => { if (isLead()) teamForm(null); };
+A.teamEdit = el => { const t = S.teams.get(el.dataset.id); if (t && canEditTeam(t)) teamForm(t); };
 function teamForm(t){
-  S.ui.tef = t ? t.id : null; t = t || {name:'', sectors:[], categories:[], leader_id:''};
+  S.ui.tef = t ? t.id : null; t = t || {name:'', sectors:[], categories:[], leader_id: isAdmin() ? '' : S.me.id};
   const cats = catsFor('');
   openModal(`<div class="row"><h2>${S.ui.tef ? 'Edytuj zespół' : 'Nowy zespół'}</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
     <div class="fgrid"><div class="field"><label class="lbl" for="teName">Nazwa zespołu</label><input type="text" id="teName" value="${esc(t.name)}" placeholder="np. Zespół Gastro"></div>
