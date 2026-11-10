@@ -1,5 +1,5 @@
 import { S, V, A, $, esc, fold, todayISO, addDays, fmtDay, emailsIn, igHandle, socialUrl, toast, copyText, STAGES, STAGES_UI, stageGroup, STAGE, CH, SECTORS, VARS, PRESETS,
-  isAdmin, isLead, ledTeams, teamMembers, inTeamScope, pname, pfirst, go, refresh, refreshNow, openModal, closeLayer, optList, peopleOpts, stagePill, chTag,
+  isAdmin, isLead, ledTeams, canEditTeam, teamMembers, inTeamScope, pname, pfirst, go, refresh, refreshNow, openModal, closeLayer, optList, peopleOpts, stagePill, chTag,
   updateFirm, setTarget, allTpls, tplById, sb, dbErr, pathPrompt, parsePathAnswer, loadAll } from './core.js';
 import { campRow, pathHTML, tState, catsFor, promptModal, blockedFirms, canClaim } from './views-work.js';
 
@@ -15,7 +15,7 @@ V.kampanie = {
       + (arch.length ? `<details class="more"><summary>Archiwum (${arch.length})</summary>${arch.map(campRow).join('')}</details>` : '');
   } }
 };
-function canManage(c){ return isAdmin() || c.created_by === S.me.id || (c.team_id && S.teams.get(c.team_id) && S.teams.get(c.team_id).leader_id === S.me.id); }
+function canManage(c){ return isAdmin() || c.created_by === S.me.id || (c.team_id && canEditTeam(S.teams.get(c.team_id))); }
 V.kampania = {
   nav:'kampanie',
   html(){

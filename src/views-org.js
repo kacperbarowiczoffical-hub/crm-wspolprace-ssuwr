@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { S, V, A, $, esc, enc, fold, keyOf, bigrams, dice, pySlug, todayISO, fmtDay, emailsIn, igHandle, socialUrl, cityOf, domainOf, shortUrl, splitContact,
-  toast, copyText, STAGE, STAGES, CH, SECTORS, ROLES, ST_SHEET, isAdmin, isLead, myTeams, teamMembers, inTeamScope, pname, avatarHTML, go, refresh, refreshNow,
+  toast, copyText, STAGE, STAGES, CH, SECTORS, ROLES, ST_SHEET, isAdmin, isLead, myTeams, teamMembers, isTeamLeader, teamLeaders, canEditTeam, inTeamScope, pname, avatarHTML, go, refresh, refreshNow,
   openModal, closeLayer, optList, peopleOpts, stagePill, sb, dbErr, prep, rebuildIndex, CFG } from './core.js';
 import { catsFor, firmCard, myQueue } from './views-work.js';
 
@@ -48,11 +48,12 @@ V.struktura = {
         const mem = teamMembers(t), scope = S.list.filter(f => inTeamScope(f, t));
         const canEdit = canEditTeam(t);
         return `<div class="box"><div class="row between"><h2>${esc(t.name)}</h2>${canEdit ? `<button class="btn sm" data-act="teamEdit" data-id="${esc(t.id)}">Edytuj</button>` : ''}</div>
-          <div>Lider: <b>${esc(t.leader_id ? pname(t.leader_id) : 'brak')}</b></div>
+          <div>${teamLeaders(t).length > 1 ? 'Liderzy' : 'Lider'}: <b>${esc(teamLeaders(t).map(id => pname(id) + (id === t.leader_id && teamLeaders(t).length > 1 ? ' (główny)' : '')).join(', ') || 'brak')}</b></div>
           <div class="row">${(t.sectors||[]).map(s => `<span class="pill s-act">${esc(s)} (cały sektor)</span>`).join('')}${(t.categories||[]).map(c => `<span class="pill s-">${esc(c)}</span>`).join('') || (!(t.sectors||[]).length ? '<span class="hint">Brak kategorii</span>' : '')}</div>
           <div class="meta"><span>${scope.length} firm</span><span>w toku: ${scope.filter(f => ['kontakt','wyslano','followup','odpowiedz','rozmowy'].includes(f.stage)).length}</span><span>współprace: ${scope.filter(f => f.stage === 'wspolpraca').length}</span></div>
           <div class="lbl">Członkowie (${mem.length})</div>
-          <div class="row">${mem.map(id => `<span class="chip">${avatarHTML(id)} ${esc(pname(id))}${id === t.leader_id ? ' · lider' : ''}${canEdit && id !== t.leader_id ? ` <button class="x sm" data-act="tmDel" data-t="${esc(t.id)}" data-u="${esc(id)}" aria-label="Usuń z zespołu">×</button>` : ''}</span>`).join('') || '<span class="hint">Brak członków</span>'}</div>
+          <div class="row">${mem.map(id => { const co = id !== t.leader_id && isTeamLeader(t, id), pr = S.profiles.get(id), canLead = isAdmin() || !(pr && pr.role === 'admin');
+            return `<span class="chip">${avatarHTML(id)} ${esc(pname(id))}${id === t.leader_id ? ' · lider główny' : co ? ' · lider' : ''}${canEdit && id !== t.leader_id ? `${canLead ? ` <button class="btn sm" data-act="tmLead" data-t="${esc(t.id)}" data-u="${esc(id)}" data-v="${co ? '0' : '1'}" title="${co ? 'Odbierz rolę lidera w zespole' : 'Zrób liderem zespołu'}">${co ? 'zdejmij lidera' : '+ lider'}</button>` : ''} <button class="x sm" data-act="tmDel" data-t="${esc(t.id)}" data-u="${esc(id)}" aria-label="Usuń z zespołu">×</button>` : ''}</span>`; }).join('') || '<span class="hint">Brak członków</span>'}</div>
           ${canEdit ? `<div class="row"><select id="tmAdd-${esc(t.id)}" style="width:auto">${peopleOpts('', 'Dodaj osobę…', [...S.profiles.keys()].filter(id => !mem.includes(id)))}</select><button class="btn sm" data-act="tmAdd" data-t="${esc(t.id)}">Dodaj</button></div>` : ''}
           <a href="#" class="hint" data-act="teamFirms" data-id="${esc(t.id)}">Pokaż firmy zespołu →</a></div>`;
       }).join('');
@@ -82,6 +83,14 @@ A.approve = async el => {
 };
 A.block = async el => { const { error } = await sb.from('profiles').update({status:'blocked'}).eq('id', el.dataset.id); if (error) return dbErr(error); S.profiles.get(el.dataset.id).status = 'blocked'; toast('Zablokowano dostęp'); refreshNow(); };
 A.tmAdd = async el => { const t = el.dataset.t, u = $('tmAdd-' + t).value; if (!u) return; const { error } = await sb.from('team_members').insert({team_id:t, user_id:u}); if (error) return dbErr(error); S.tm.push({team_id:t, user_id:u}); refreshNow(); toast('Dodano do zespołu'); };
+A.tmLead = async el => {
+  const t = el.dataset.t, u = el.dataset.u, v = el.dataset.v === '1';
+  const { error } = await sb.from('team_members').update({is_leader:v}).eq('team_id', t).eq('user_id', u);
+  if (error) return dbErr(error);
+  const row = S.tm.find(x => x.team_id === t && x.user_id === u); if (row) row.is_leader = v;
+  const p = S.profiles.get(u); if (v && p && p.role === 'member') p.role = 'leader';
+  refreshNow(); toast(v ? 'Dodano lidera zespołu' : 'Odebrano rolę lidera');
+};
 A.tmDel = async el => { const { error } = await sb.from('team_members').delete().eq('team_id', el.dataset.t).eq('user_id', el.dataset.u); if (error) return dbErr(error); S.tm = S.tm.filter(x => !(x.team_id === el.dataset.t && x.user_id === el.dataset.u)); refreshNow(); };
 /* konta zakładane przez admina – bez maili */
 function genPass(){ const a = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'; const r = crypto.getRandomValues(new Uint32Array(10)); return 'Ss-' + [...r].map(x => a[x % a.length]).join(''); }
@@ -119,20 +128,14 @@ A.userPass = async el => {
   openModal(`<div class="row"><h2>Nowe hasło</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>${credsBox(p.email, pass)}`);
 };
 A.teamFirms = el => { S.ui.ff = {limit:60, team:el.dataset.id}; go('firmy'); };
-// Admin edytuje każdy zespół; lider tylko te, które sam prowadzi (nie prowadzone przez admina).
-function canEditTeam(t){
-  if (isAdmin()) return true;
-  if (!isLead() || t.leader_id !== S.me.id) return false;
-  const l = S.profiles.get(t.leader_id); return !l || l.role !== 'admin';
-}
 A.teamNew = () => { if (isLead()) teamForm(null); };
-A.teamEdit = el => { const t = S.teams.get(el.dataset.id); if (t && canEditTeam(t)) teamForm(t); };
+A.teamEdit = el => { const t = S.teams.get(el.dataset.id); if (canEditTeam(t)) teamForm(t); };
 function teamForm(t){
   S.ui.tef = t ? t.id : null; t = t || {name:'', sectors:[], categories:[], leader_id: isAdmin() ? '' : S.me.id};
   const cats = catsFor('');
   openModal(`<div class="row"><h2>${S.ui.tef ? 'Edytuj zespół' : 'Nowy zespół'}</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
     <div class="fgrid"><div class="field"><label class="lbl" for="teName">Nazwa zespołu</label><input type="text" id="teName" value="${esc(t.name)}" placeholder="np. Zespół Gastro"></div>
-    <div class="field"><label class="lbl" for="teLead">Lider</label>${isAdmin() ? `<select id="teLead">${peopleOpts(t.leader_id, '— brak —')}</select>` : `<input type="text" value="${esc(pname(t.leader_id))}" disabled>`}</div></div>
+    <div class="field"><label class="lbl" for="teLead">Lider główny</label>${isAdmin() ? `<select id="teLead">${peopleOpts(t.leader_id, '— brak —')}</select>` : `<input type="text" value="${esc(pname(t.leader_id))}" disabled>`}</div></div>
     <div class="lbl">Całe sektory</div><div class="row" id="teSec">${SECTORS.map(s => `<label class="chip"><input type="checkbox" value="${esc(s)}" ${(t.sectors||[]).includes(s) ? 'checked' : ''}> ${esc(s)}</label>`).join('')}</div>
     <div class="lbl">Albo pojedyncze kategorie</div><input type="search" id="teCatQ" placeholder="filtruj kategorie…">
     <div class="row" id="teCat" style="max-height:260px;overflow-y:auto">${cats.map(c => `<label class="chip" data-c="${esc(fold(c))}"><input type="checkbox" value="${esc(c)}" ${(t.categories||[]).includes(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')}</div>

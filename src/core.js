@@ -127,7 +127,16 @@ export const isAdmin = () => !!S.me && S.me.role === 'admin' && S.me.status === 
 export const isLead = () => !!S.me && (S.me.role === 'admin' || S.me.role === 'leader') && S.me.status === 'active';
 export const isActive = () => !!S.me && S.me.status === 'active';
 export function myTeams(uid){ uid = uid || (S.me && S.me.id); const ids = new Set(S.tm.filter(x => x.user_id === uid).map(x => x.team_id)); for (const [id,t] of S.teams) if (t.leader_id === uid) ids.add(id); return [...ids].map(id => S.teams.get(id)).filter(Boolean); }
-export function ledTeams(){ return isAdmin() ? [...S.teams.values()] : [...S.teams.values()].filter(t => t.leader_id === S.me.id); }
+// Lider zespołu = lider główny (teams.leader_id) albo współlider (team_members.is_leader).
+export function isTeamLeader(t, uid){ uid = uid || (S.me && S.me.id); return !!t && (t.leader_id === uid || S.tm.some(x => x.team_id === t.id && x.user_id === uid && x.is_leader)); }
+export function teamLeaders(t){ const ids = new Set(S.tm.filter(x => x.team_id === t.id && x.is_leader).map(x => x.user_id)); if (t.leader_id) ids.add(t.leader_id); return [...ids]; }
+// Admin: każdy zespół. Lider: zespoły, w których jest liderem, o ile żaden z liderów nie jest administratorem.
+export function canEditTeam(t){
+  if (!t) return false; if (isAdmin()) return true;
+  if (!isLead() || !isTeamLeader(t)) return false;
+  return !teamLeaders(t).some(id => { const p = S.profiles.get(id); return p && p.role === 'admin'; });
+}
+export function ledTeams(){ return isAdmin() ? [...S.teams.values()] : [...S.teams.values()].filter(t => canEditTeam(t)); }
 export function teamMembers(t){ const ids = new Set(S.tm.filter(x => x.team_id === t.id).map(x => x.user_id)); if (t.leader_id) ids.add(t.leader_id); return [...ids].filter(id => S.profiles.has(id)); }
 export function inTeamScope(f, t){ return (t.sectors||[]).includes(f.sector) || (t.categories||[]).includes(f.category); }
 export function firmTeams(f){ return [...S.teams.values()].filter(t => inTeamScope(f, t)); }
@@ -265,7 +274,7 @@ export function subscribeRealtime(){
       case 'firms': if (row) S.firms.set(row.id, prep(row)); else S.firms.delete(old.id); rebuildIndex(); break;
       case 'profiles': if (row) { S.profiles.set(row.id, row); if (row.id === S.me.id) { const was = S.me.status; S.me = row; if (was !== row.status) location.reload(); } } else S.profiles.delete(old.id); break;
       case 'teams': if (row) S.teams.set(row.id, row); else S.teams.delete(old.id); break;
-      case 'team_members': if (p.eventType === 'DELETE') S.tm = S.tm.filter(x => !(x.team_id === old.team_id && x.user_id === old.user_id)); else if (!S.tm.some(x => x.team_id === row.team_id && x.user_id === row.user_id)) S.tm.push(row); break;
+      case 'team_members': if (p.eventType === 'DELETE') S.tm = S.tm.filter(x => !(x.team_id === old.team_id && x.user_id === old.user_id)); else { S.tm = S.tm.filter(x => !(x.team_id === row.team_id && x.user_id === row.user_id)); S.tm.push(row); } break;
       case 'campaigns': if (row) S.camps.set(row.id, row); else { S.camps.delete(old.id); S.targets.delete(old.id); } break;
       case 'campaign_targets': if (row) { if (!S.targets.has(row.campaign_id)) S.targets.set(row.campaign_id, new Map()); S.targets.get(row.campaign_id).set(row.firm_id, row); } else if (old.campaign_id && S.targets.has(old.campaign_id)) S.targets.get(old.campaign_id).delete(old.firm_id); break;
       case 'activities': if (row) { const i = S.acts.findIndex(a => a.id === row.id); if (i >= 0) S.acts[i] = row; else S.acts.unshift(row); } else S.acts = S.acts.filter(a => a.id !== old.id); break;
