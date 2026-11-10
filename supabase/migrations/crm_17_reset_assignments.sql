@@ -1,6 +1,6 @@
 -- Reset przydziałów w kampanii: zdejmuje osoby ze wszystkich firm kampanii (wracają do puli „Do wzięcia”),
 -- opcjonalnie zeruje postęp na ścieżce i zdejmuje „Prowadzi” z firm na etapie „nowa” bez historii kontaktu.
--- Uprawnienia jak canManage w aplikacji: administrator, twórca kampanii albo lider jej zespołu.
+-- Uprawnienia: tylko administrator główny.
 -- p_apply = false → tylko podgląd liczb, nic nie zmienia.
 create or replace function public.reset_campaign_assignments(
   p_campaign uuid,
@@ -16,8 +16,8 @@ begin
   if not public.is_active() then raise exception 'Brak dostępu.'; end if;
   select * into c from campaigns where id = p_campaign;
   if c.id is null then raise exception 'Nie znaleziono kampanii.'; end if;
-  if not (public.is_admin() or c.created_by = auth.uid() or (c.team_id is not null and public.leads_team(c.team_id))) then
-    raise exception 'Przydziały w tej kampanii może resetować administrator, twórca kampanii lub lider jej zespołu.';
+  if not public.is_admin() then
+    raise exception 'Przydziały w kampanii może resetować tylko administrator.';
   end if;
 
   select count(*), count(*) filter (where assignee is not null),

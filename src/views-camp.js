@@ -23,7 +23,7 @@ V.kampania = {
     S.ui.kf = S.ui.kf || {who:'', st:''};
     const team = c.team_id && S.teams.get(c.team_id), m = canManage(c);
     return `<div class="vhead"><div><a href="#" data-go="kampanie" class="hint">← Kampanie</a><h1>${esc(c.name)}</h1><p class="sub">${esc(c.goal || '')}</p><p class="hint">${team ? 'Zespół: ' + esc(team.name) + ' · ' : ''}start ${esc(fmtDay(c.start_date))} · utworzył(a) ${esc(pname(c.created_by))}</p></div>
-      ${m ? `<div class="row">${c.status === 'active' ? `<button class="btn" data-act="campStatus" data-s="paused">Wstrzymaj</button>` : c.status === 'paused' ? `<button class="btn" data-act="campStatus" data-s="active">Wznów</button>` : ''}${c.status === 'archived' ? '' : c.status !== 'done' ? `<button class="btn" data-act="campStatus" data-s="done">Zakończ</button>` : `<button class="btn" data-act="campStatus" data-s="active">Otwórz ponownie</button>`}${c.status !== 'archived' ? `<button class="btn" data-act="campAdd">+ Dodaj firmy</button><button class="btn" data-act="campEdit">Edytuj treści</button>` : ''}${(S.targets.get(c.id) || new Map()).size ? `<button class="btn" data-act="campReset">Resetuj przydziały</button>` : ''}
+      ${m ? `<div class="row">${c.status === 'active' ? `<button class="btn" data-act="campStatus" data-s="paused">Wstrzymaj</button>` : c.status === 'paused' ? `<button class="btn" data-act="campStatus" data-s="active">Wznów</button>` : ''}${c.status === 'archived' ? '' : c.status !== 'done' ? `<button class="btn" data-act="campStatus" data-s="done">Zakończ</button>` : `<button class="btn" data-act="campStatus" data-s="active">Otwórz ponownie</button>`}${c.status !== 'archived' ? `<button class="btn" data-act="campAdd">+ Dodaj firmy</button><button class="btn" data-act="campEdit">Edytuj treści</button>` : ''}${isAdmin() && (S.targets.get(c.id) || new Map()).size ? `<button class="btn" data-act="campReset">Resetuj przydziały</button>` : ''}
         ${c.status === 'archived' ? `<button class="btn" data-act="campStatus" data-s="done">Przywróć z archiwum</button>` : `<button class="btn ghost" data-act="campArchive">Archiwizuj</button>`}${isAdmin() || c.created_by === S.me.id ? `<button class="btn ghost danger" data-act="campDelete">Usuń</button>` : ''}</div>` : ''}</div>
       ${c.status === 'archived' ? `<div class="box" style="border-color:var(--gold)">Kampania jest w archiwum. Jej firmy, które nie odpowiedziały, można już dodawać do innych kampanii.</div>` : ''}
       <div class="grid g4" id="kKpi"></div>
@@ -74,7 +74,7 @@ A.campDelete = async () => {
 };
 const rpcErr = error => error && error.code === 'P0001' ? toast(error.message) : dbErr(error, 'reset_campaign_assignments');
 A.campReset = async () => {
-  const c = S.camps.get(S.arg); if (!c || !canManage(c)) return;
+  const c = S.camps.get(S.arg); if (!c || !isAdmin()) return;
   const { data:p, error } = await sb.rpc('reset_campaign_assignments', {p_campaign:c.id, p_reset_progress:true, p_clear_owners:true, p_apply:false});
   if (error) return rpcErr(error);
   S.ui.cr = {cid:c.id};
