@@ -1,6 +1,6 @@
 import { S, V, A, $, esc, enc, fold, keyOf, slug, rid, todayISO, addDays, fmtDay, fmtWhen, dueLabel, emailsIn, igHandle, socialUrl, cityOf, shortUrl,
   toast, copyText, openUrl, STAGES, STAGES_UI, stageGroup, STAGE, CH, ACTL, OUTCOMES, SECTORS, ROLES, isAdmin, isLead, isActive, myTeams, isMyScope, firmTeams, pname, pfirst, avatarHTML,
-  go, refresh, refreshNow, openModal, closeLayer, optList, peopleOpts, stagePill, chTag, updateFirm, insertFirm, logAct, setTarget,
+  go, refresh, refreshNow, openModal, closeLayer, layerOpened, optList, peopleOpts, stagePill, chTag, updateFirm, insertFirm, logAct, setTarget,
   allTpls, tplById, fillVars, outlookUrl, ccEmail, AI_TOOLS, contactPrompt, parseAiAnswer, sb, dbErr, splitContact } from './core.js';
 
 /* ================= wspólne ================= */
@@ -158,7 +158,7 @@ export async function claimTarget(cid, fid){
   return true;
 }
 A.claimT = async el => { el.disabled = true; if (await claimTarget(el.dataset.c, el.dataset.f)) { logAct({type:'claim', firm_id:el.dataset.f, campaign_id:el.dataset.c, summary:'Wziął(-ęła) firmę z puli kampanii'}); toast('Firma jest Twoja – znajdziesz ją w „Na dziś”'); refreshNow(); } else el.disabled = false; };
-A.startFlow = el => { S.ui.flow = true; A.doStep(el); };
+A.startFlow = el => { S.ui.flow = true; S.ui.skipped = new Set(); A.doStep(el); };
 function waiting(){ const out = []; for (const [cid, m] of S.targets){ const c = S.camps.get(cid); if (!c || c.status === 'archived') continue; for (const [fid, t] of m) if (t.state === 'waiting' && t.assignee === S.me.id){ const f = S.firms.get(fid); if (f) out.push({c, cid, f, t, step:null}); } } return out.sort((a,b) => (a.t.last||'').localeCompare(b.t.last||'')); }
 function queueCard(x, isWaiting){
   const {c, cid, f, t, step} = x, d = isWaiting ? {t:`ostatni kontakt ${fmtDay(t.last)}`} : dueLabel(t.due);
@@ -166,7 +166,7 @@ function queueCard(x, isWaiting){
     <div class="top"><span class="name"><a href="#" data-act="openFirm" data-id="${esc(f.id)}">${esc(f.name)}</a></span><span class="pill ${d.late ? 's-R' : 's-act'}">${esc(d.t)}</span></div>
     <div class="meta"><span>${esc(c.name)}</span>${step ? `<span>${esc(step.label||'')}: ${step.channels.map(ch => esc(CH[ch].l)).join(' + ')}</span>` : `<span>Czekasz na odpowiedź</span>`}</div>
     <div class="row">${step ? `<button class="btn pri sm" data-act="doStep" data-c="${esc(cid)}" data-f="${esc(f.id)}">Kontakt</button>` : ''}<button class="btn sm" data-act="reply" data-f="${esc(f.id)}" data-c="${esc(cid)}">Odpowiedzieli</button>
-      ${step ? `<button class="btn sm ghost" data-act="postpone" data-c="${esc(cid)}" data-f="${esc(f.id)}">Jutro</button>` : `<button class="btn sm ghost" data-act="stopTarget" data-c="${esc(cid)}" data-f="${esc(f.id)}">Zamknij</button>`}</div></div>`;
+      ${step ? `<button class="btn sm ghost" data-act="postpone" data-c="${esc(cid)}" data-f="${esc(f.id)}">Jutro</button>` : `<button class="btn sm ghost" data-act="stopTarget" data-c="${esc(cid)}" data-f="${esc(f.id)}">Zamknij</button>`}${targetTools(c, f.id, t)}</div></div>`;
 }
 export function contactLine(f){
   const em = emailsIn(f.email);
@@ -178,6 +178,50 @@ function advance(cid, fid){
   return setTarget(cid, fid, {state:'waiting', last:todayISO()});
 }
 A.skipStep = el => { advance(el.dataset.c, el.dataset.f); toast('Pominięto krok'); };
+
+/* cofnięcie firmy do wcześniejszego kroku i oddanie firmy do puli */
+function canEditTarget(t){ return !!t && (t.assignee === S.me.id || isLead()); }
+function maxBackStep(t){ return t.state === 'active' ? (t.step||0) - 1 : (t.step||0); }
+export function targetTools(c, fid, t){
+  if (!c || !t || c.status === 'archived') return '';
+  let h = '';
+  if (canEditTarget(t) && t.state !== 'replied' && maxBackStep(t) >= 0) h += `<button class="btn sm ghost" data-act="stepBack" data-c="${esc(c.id)}" data-f="${esc(fid)}" title="Wróć do wcześniejszego kroku ścieżki">↺ Cofnij krok</button>`;
+  if (t.assignee && c.status === 'active' && (t.assignee === S.me.id || isLead()) && t.state !== 'replied') h += `<button class="btn sm ghost" data-act="releaseT" data-c="${esc(c.id)}" data-f="${esc(fid)}" title="Firma wróci do puli „Do wzięcia”">Oddaj do puli</button>`;
+  return h;
+}
+A.stepBack = el => {
+  const cid = el.dataset.c, fid = el.dataset.f, c = S.camps.get(cid), t = S.targets.get(cid) && S.targets.get(cid).get(fid), f = S.firms.get(fid);
+  if (!c || !t || !f) return; const max = maxBackStep(t); if (max < 0) { toast('Firma jest już na pierwszym kroku.'); return; }
+  S.ui.sb = {cid, fid};
+  openModal(`<div class="row"><div><h2>Cofnij krok · ${esc(f.name)}</h2><div class="hint">${esc(c.name)} · teraz: ${esc(tState(t))}</div></div><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
+    <p class="hint">Firma wróci do wybranego kroku i pojawi się dziś w „Na dziś” z treściami tego kroku. Historia kontaktu zostaje.</p>
+    <div class="stack" id="sbSteps">${(c.steps||[]).slice(0, max + 1).map((s, i) => `<label class="chk"><input type="radio" name="sbStep" value="${i}" ${i === max ? 'checked' : ''}> <b>Krok ${i+1}</b> · dzień ${s.day} · ${esc(s.label || '')} <span class="hint">(${s.channels.map(ch => esc(CH[ch].l)).join(' + ')})</span></label>`).join('')}</div>
+    <div class="row"><button class="btn pri" data-act="stepBackGo">Cofnij</button><button class="btn" data-act="close">Anuluj</button></div>`);
+};
+A.stepBackGo = async () => {
+  const {cid, fid} = S.ui.sb || {}, r = document.querySelector('[name=sbStep]:checked'); if (!cid || !r) return;
+  const i = +r.value;
+  if (await setTarget(cid, fid, {step:i, state:'active', due:todayISO()})) {
+    logAct({type:'step_back', firm_id:fid, campaign_id:cid, step:i, summary:`Cofnięto do kroku ${i+1}`});
+    closeLayer(); toast(`Firma wróciła do kroku ${i+1} – jest w „Na dziś”`);
+  }
+};
+export async function releaseTarget(cid, fid){
+  const t = S.targets.get(cid) && S.targets.get(cid).get(fid); if (!t) return false;
+  const who = t.assignee;
+  const { data, error } = await sb.rpc('release_target', {p_campaign:cid, p_firm:fid});
+  if (error) { toast(error.message); return false; }
+  if (!data) { toast('Ta firma jest już w puli.'); return false; }
+  t.assignee = null; const f = S.firms.get(fid); if (f && f.owner_id === who) f.owner_id = null;
+  return true;
+}
+A.releaseT = async el => {
+  const cid = el.dataset.c, fid = el.dataset.f, f = S.firms.get(fid);
+  if (!confirm(`Oddać „${f ? f.name : 'firmę'}” do puli? Firma zniknie z Twoich zadań, a ktoś inny będzie mógł ją wziąć.`)) return;
+  el.disabled = true;
+  if (await releaseTarget(cid, fid)) { logAct({type:'release', firm_id:fid, campaign_id:cid, summary:'Oddano firmę do puli kampanii'}); toast('Firma wróciła do puli'); refreshNow(); }
+  else el.disabled = false;
+};
 A.postpone = el => { setTarget(el.dataset.c, el.dataset.f, {due:addDays(todayISO(), 1)}); toast('Przełożono na jutro'); };
 A.stopTarget = el => { setTarget(el.dataset.c, el.dataset.f, {state:'stopped'}); toast('Zamknięto'); };
 A.doStep = el => { const c = S.camps.get(el.dataset.c), t = S.targets.get(el.dataset.c).get(el.dataset.f); openContact({firm:el.dataset.f, camp:el.dataset.c, stepIdx:t.step||0, step:c.steps[t.step||0]}); };
@@ -218,7 +262,7 @@ export function openContact(o){
       <div class="row"><button class="btn" data-act="aiPrompt">✦ Prompt do AI</button><button class="btn" data-act="copyMail">Kopiuj maila</button></div>
     </details>
     <div class="donebar"><div class="row" id="ctDone"></div>
-      <div class="row"><button class="btn pri big" data-act="saveContact">${S.ui.flow && nQ > 1 ? 'Gotowe – następna firma →' : 'Gotowe'}</button>${camp ? `<button class="btn ghost" data-act="skipInFlow">Pomiń</button>` : ''}</div></div>`, () => {
+      <div class="row"><button class="btn pri big" data-act="saveContact">${S.ui.flow && nQ > 1 ? 'Gotowe – następna firma →' : 'Gotowe'}</button>${camp && S.ui.flow ? `<button class="btn ghost" data-act="skipInFlow" title="Przejdź do następnej firmy – ta zostaje na dziś, bez zmiany kroku">Pomiń firmę</button>` : ''}${camp ? `<button class="btn ghost" data-act="laterInFlow">Jutro</button>` : ''}</div></div>`, () => {
     $('ctChans').addEventListener('change', contactChrome);
     contactChrome();
   });
@@ -237,10 +281,13 @@ function contactChrome(){
   $('ctDone').innerHTML = '<span class="lbl">Wysłane:</span>' + st.channels.map(ch => `<label class="chip"><input type="checkbox" value="${ch}" ${st.touched.has(ch) ? 'checked' : ''}> ${esc(CH[ch].l)}</label>`).join('');
 }
 function markTouched(ch){ const st = S.ui.ct; st.touched.add(ch); const i = document.querySelector(`#ctDone input[value="${ch}"]`); if (i) i.checked = true; }
-A.skipInFlow = async () => { const st = S.ui.ct; await advance(st.camp, st.firm); closeLayer(); toast('Pominięto'); nextInFlow(); };
+// „Pomiń” nie przesuwa firmy na kolejny krok – tylko przeskakuje ją teraz; zostaje na liście „Na dziś”
+A.skipInFlow = () => { const st = S.ui.ct; (S.ui.skipped = S.ui.skipped || new Set()).add(st.camp + '|' + st.firm); closeLayer(); toast('Pominięto – firma zostaje w „Na dziś”'); if (S.ui.flow) nextInFlow(); };
+A.laterInFlow = async () => { const st = S.ui.ct; await setTarget(st.camp, st.firm, {due:addDays(todayISO(), 1)}); closeLayer(); toast('Przełożono na jutro'); nextInFlow(); };
 function nextInFlow(){
   if (!S.ui.flow) return;
-  const x = myQueue().find(y => y.t.due <= todayISO());
+  const sk = S.ui.skipped || new Set();
+  const x = myQueue().find(y => y.t.due <= todayISO() && !sk.has(y.cid + '|' + y.f.id));
   if (!x) { S.ui.flow = false; toast('Wszystko zrobione na dziś 🎉'); return; }
   setTimeout(() => openContact({firm:x.f.id, camp:x.cid, stepIdx:x.t.step||0, step:x.step}), 350);
 }
@@ -409,6 +456,7 @@ export function openFirm(id){
   S.drawer = id; S.ui.firmActs = null;
   $('layer').innerHTML = `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="Karta firmy"><div id="dBody"></div>
     <div class="box"><h3>Historia kontaktu</h3><div class="feed" id="dTimeline"></div></div></aside>`;
+  layerOpened();
   V.__drawer();
   sb.from('activities').select('*').eq('firm_id', id).order('at', {ascending:false}).limit(300).then(({data}) => { if (data && S.drawer === id) { S.ui.firmActs = data; V.__drawer(); } });
 }
@@ -419,7 +467,7 @@ V.__drawer = () => {
   const cs = []; for (const [cid, m] of S.targets){ const t = m.get(id), c = S.camps.get(cid); if (t && c) cs.push([cid, c, t]); }
   $('dBody').innerHTML = `<div class="row"><div style="min-width:0"><h2>${esc(f.name)}</h2><div class="meta" style="margin-top:4px"><span>${esc(f.sector)} › ${esc(f.category||'—')}</span>${f.reach ? `<span>${esc(f.reach)}</span>` : ''}${teams.length ? `<span>zespół: ${teams.map(t => esc(t.name)).join(', ')}</span>` : ''}</div></div><button class="x" data-act="close" aria-label="Zamknij">×</button></div>
     <div class="box"><div class="row between"><div>${f.owner_id ? `Firmę prowadzi <b>${esc(pname(f.owner_id))}</b>` : '<span class="hint">Nikt jeszcze nie prowadzi tej firmy.</span>'}${f.last_contact ? `<div class="hint">Ostatni kontakt: ${esc(fmtDay(f.last_contact))}</div>` : ''}</div>
-      <div class="row">${f.owner_id !== S.me.id && canTake ? `<button class="btn gold sm" data-act="claim" data-f="${esc(id)}">${f.owner_id ? 'Przejmij firmę' : 'Biorę tę firmę'}</button>` : ''}${f.owner_id === S.me.id ? `<button class="btn sm ghost" data-act="release" data-f="${esc(id)}">Oddaj firmę</button>` : ''}</div></div>
+      <div class="row">${f.owner_id !== S.me.id && canTake ? `<button class="btn gold sm" data-act="claim" data-f="${esc(id)}">${f.owner_id ? 'Przejmij firmę' : 'Biorę tę firmę'}</button>` : ''}${f.owner_id === S.me.id ? `<button class="btn sm ghost" data-act="release" data-f="${esc(id)}" title="Firma przestanie być Twoja; z kampanii wróci do puli">Oddaj firmę</button>` : ''}</div></div>
       <div class="row"><button class="btn pri" data-act="contactFirm" data-f="${esc(id)}">Kontakt z firmą</button><button class="btn" data-act="reply" data-f="${esc(id)}">Odpowiedzieli</button><button class="btn ghost" data-act="note" data-f="${esc(id)}">+ Notatka</button></div>
       <div class="fgrid"><div class="field"><label class="lbl" for="dStage">Etap rozmów</label><select id="dStage">${optList(STAGES_UI.map(s => [s.id, s.l]), stageGroup(f.stage))}</select></div>
       ${isLead() ? `<div class="field"><label class="lbl" for="dOwner">Prowadzi (przypisz)</label><select id="dOwner">${peopleOpts(f.owner_id, '— nikt —')}</select></div>` : ''}</div></div>
@@ -429,7 +477,7 @@ V.__drawer = () => {
     </div>
     ${f.address || f.notes || f.collected_by ? `<div class="box">${f.address ? `<div>${esc(f.address)}</div>` : ''}${f.collected_by ? `<div class="hint">Zebrał(a): ${esc(f.collected_by)}</div>` : ''}${f.notes ? `<div class="note">${esc(f.notes)}</div>` : ''}</div>` : ''}
     <details class="more"><summary>Więcej działań</summary><div class="row">${isLead() || f.owner_id === S.me.id ? `<button class="btn sm" data-act="toCamp" data-f="${esc(id)}">Dodaj do kampanii</button>` : ''}<button class="btn sm" data-act="mailFinder" data-f="${esc(id)}">Szukaj maila</button><button class="btn sm" data-act="editFirm" data-f="${esc(id)}">Edytuj dane</button></div></details>
-    ${cs.length ? `<div class="box"><h3>Kampanie</h3>${cs.map(([cid,c,t]) => `<div class="row between"><div><a href="#" data-go="kampania" data-arg="${esc(cid)}">${esc(c.name)}</a> <span class="hint">· ${esc(pname(t.assignee))} · ${esc(tState(t))}</span>${pathHTML(c,t)}</div>${t.state === 'active' && t.assignee === S.me.id ? `<button class="btn sm pri" data-act="doStep" data-c="${esc(cid)}" data-f="${esc(id)}">Kontakt z firmą</button>` : ''}</div>`).join('')}</div>` : ''}`;
+    ${cs.length ? `<div class="box"><h3>Kampanie</h3>${cs.map(([cid,c,t]) => `<div class="row between"><div><a href="#" data-go="kampania" data-arg="${esc(cid)}">${esc(c.name)}</a> <span class="hint">· ${t.assignee ? esc(pname(t.assignee)) : 'w puli'} · ${esc(tState(t))}</span>${pathHTML(c,t)}</div><div class="row">${t.state === 'active' && t.assignee === S.me.id ? `<button class="btn sm pri" data-act="doStep" data-c="${esc(cid)}" data-f="${esc(id)}">Kontakt z firmą</button>` : ''}${!t.assignee && canClaim(c) ? `<button class="btn sm gold" data-act="claimT" data-c="${esc(cid)}" data-f="${esc(id)}">Biorę</button>` : ''}${targetTools(c, id, t)}</div></div>`).join('')}</div>` : ''}`;
   $('dStage').onchange = async e => { const to = e.target.value; if (await updateFirm(id, {stage:to})) { logAct({type:'stage', firm_id:id, to_stage:to}); toast('Zmieniono etap'); } };
   if ($('dOwner')) $('dOwner').onchange = async e => { if (await updateFirm(id, {owner_id:e.target.value || null})) { logAct({type:'claim', firm_id:id, summary: e.target.value ? 'Przypisano: ' + pname(e.target.value) : 'Firma bez opiekuna'}); toast('Zapisano'); } };
   const live = S.acts.filter(a => a.firm_id === id), seen = new Set(live.map(a => a.id));
@@ -440,7 +488,12 @@ A.contactFirm = el => openContact({firm:el.dataset.f});
 A.claim = async el => { const id = el.dataset.f;
   for (const x of poolList().filter(y => y.f.id === id)) await claimTarget(x.cid, id);
   if (await updateFirm(id, {owner_id:S.me.id})) { logAct({type:'claim', firm_id:id, summary:'Przejął(-ęła) kontakt z firmą'}); toast('Prowadzisz teraz tę firmę'); } };
-A.release = async el => { if (await updateFirm(el.dataset.f, {owner_id:null})) toast('Oddano firmę'); };
+A.release = async el => {
+  const id = el.dataset.f; let n = 0;
+  for (const [cid, m] of S.targets){ const t = m.get(id), c = S.camps.get(cid); if (t && c && c.status === 'active' && t.assignee === S.me.id && t.state !== 'replied' && await releaseTarget(cid, id)) n++; }
+  if (n) { logAct({type:'release', firm_id:id, summary:'Oddano firmę do puli'}); toast('Firma wróciła do puli'); refreshNow(); return; }
+  if (await updateFirm(id, {owner_id:null})) toast('Oddano firmę');
+};
 A.note = el => {
   const f = S.firms.get(el.dataset.f); S.ui.la = f.id;
   openModal(`<div class="row"><h2>Zapisz w historii · ${esc(f.name)}</h2><button class="x" data-act="close" aria-label="Zamknij">×</button></div>

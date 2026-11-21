@@ -1,5 +1,5 @@
 import './style.css';
-import { sb, S, V, A, $, esc, fold, CFG, toast, go, closeLayer, loadAll, subscribeRealtime, refreshChrome, isAdmin, stagePill, pfirst } from './core.js';
+import { sb, S, V, A, $, esc, fold, CFG, toast, go, closeLayer, loadAll, subscribeRealtime, refreshChrome, isAdmin, stagePill, pfirst, parseHash, canGoBack } from './core.js';
 import './views-work.js';
 import './views-camp.js';
 import { profileFields, saveProfileFrom } from './views-org.js';
@@ -7,12 +7,14 @@ import { profileFields, saveProfileFrom } from './views-org.js';
 /* ---------- nawigacja i akcje ---------- */
 document.addEventListener('click', e => {
   const g = e.target.closest('[data-go]');
-  if (g && !g.closest('form')) { e.preventDefault(); closeLayer(); go(g.dataset.go, g.dataset.arg); return; }
+  const ext = e.target.closest('a[href]:not([data-go]):not([data-act]):not([href="#"])');
+  if (g && !g.closest('form') && !(ext && g.contains(ext))) { e.preventDefault(); closeLayer(); go(g.dataset.go, g.dataset.arg); return; }
   const a = e.target.closest('[data-act]');
   if (a && A[a.dataset.act]) { if (a.tagName !== 'INPUT') e.preventDefault(); A[a.dataset.act](a, e); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('layer').innerHTML) { S.ui.flow = false; closeLayer(); } });
 A.close = () => { S.ui.flow = false; closeLayer(); };
+A.back = el => { if (canGoBack()) history.back(); else go((el && el.dataset.to) || 'zadania'); };
 
 /* ---------- wyszukiwarka firm w nagłówku ---------- */
 function gSearch(){
@@ -127,9 +129,9 @@ async function startSession(session){
   try { await loadAll(); }
   catch(e){ $('main').innerHTML = `<div class="empty">Nie udało się wczytać danych. Odśwież stronę.</div>`; console.error(e); return; }
   subscribeRealtime(); gSearch();
-  const [view, arg] = location.hash.replace(/^#/, '').split('/');
+  const [view, arg] = parseHash();
   let start = view; if (!start) { try { start = localStorage.getItem('crm-view'); } catch(e){} }
-  go(V[start] && start !== 'pulpit' ? start : 'zadania', arg ? decodeURIComponent(arg) : undefined);
+  go(V[start] && start !== 'pulpit' ? start : 'zadania', arg, 'replace');
   if (!S.me.full_name) { toast('Uzupełnij swój profil'); go('profil'); }
 }
 boot();

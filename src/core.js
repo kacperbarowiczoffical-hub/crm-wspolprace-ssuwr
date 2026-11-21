@@ -30,7 +30,7 @@ export const CH = {
   tiktok:{l:'TikTok', ico:'TT', kind:'dm', field:'tiktok'}, linkedin:{l:'LinkedIn', ico:'in', kind:'dm', field:'linkedin'},
   phone:{l:'Telefon', ico:'☎', kind:'call'}, visit:{l:'Wizyta osobista', ico:'⌂', kind:'call'}
 };
-export const ACTL = {contact:'Kontakt z firmą', reply:'Firma odpowiedziała', note:'Notatka', phone:'Telefon', meeting:'Spotkanie', visit:'Wizyta', stage:'Zmiana etapu', edit:'Edycja danych', campaign:'Dodano do kampanii', claim:'Przejęcie firmy'};
+export const ACTL = {release:'Oddano do puli', step_back:'Cofnięto krok', contact:'Kontakt z firmą', reply:'Firma odpowiedziała', note:'Notatka', phone:'Telefon', meeting:'Spotkanie', visit:'Wizyta', stage:'Zmiana etapu', edit:'Edycja danych', campaign:'Dodano do kampanii', claim:'Przejęcie firmy'};
 export const OUTCOMES = [['rozmowy','Rozmawiamy dalej'],['wspolpraca','Współpraca – zgoda'],['pozniej','Chętni, ale nie teraz'],['odmowa','Odmowa']];
 export const ROLES = {admin:'Administrator główny', leader:'Lider zespołu', member:'Członek'};
 
@@ -121,7 +121,7 @@ export const S = {
   session:null, me:null, cfg:{allowed_domains:['uwr.edu.pl']},
   profiles:new Map(), teams:new Map(), tm:[], firms:new Map(), list:[], idx:new Map(),
   camps:new Map(), targets:new Map(), acts:[], tpls:new Map(), replies:new Map(), cats:new Map(),
-  view:'pulpit', arg:null, ui:{}, drawer:null, loaded:false
+  view:'pulpit', arg:null, ui:{}, drawer:null, loaded:false, navDepth:0
 };
 export const isAdmin = () => !!S.me && S.me.role === 'admin' && S.me.status === 'active';
 export const isLead = () => !!S.me && (S.me.role === 'admin' || S.me.role === 'leader') && S.me.status === 'active';
@@ -164,19 +164,43 @@ export function refreshNow(){
   if (S.drawer && V.__drawer) V.__drawer();
   refreshChrome();
 }
-export function go(view, arg){
+/* ---- historia przeglądarki: „wstecz” w telefonie zamyka okno albo wraca do poprzedniej zakładki, zamiast wychodzić z CRM ---- */
+let layerHist = false, popWait = 0, popT = 0; const popQ = [];
+function flushPop(){ popWait = 0; clearTimeout(popT); popQ.splice(0).forEach(fn => fn()); }
+function afterNav(fn){ if (popWait) popQ.push(fn); else fn(); }
+function layerOpened(){ afterNav(() => { if (layerHist || !$('layer').innerHTML) return; history.pushState({crmLayer:1}, '', location.href); layerHist = true; }); }
+export function parseHash(){ const [v, a] = location.hash.replace(/^#/, '').split('/'); return [v || '', a ? decodeURIComponent(a) : undefined]; }
+export function canGoBack(){ return S.navDepth > 0; }
+window.addEventListener('popstate', () => {
+  if (popWait){ if (--popWait <= 0) flushPop(); return; }
+  if (layerHist){ layerHist = false; S.ui.flow = false; $('layer').innerHTML = ''; S.drawer = null; return; }
+  if ($('layer').innerHTML){ S.ui.flow = false; $('layer').innerHTML = ''; S.drawer = null; }
+  if (!S.me || !S.loaded) return;
+  S.navDepth = Math.max(0, (S.navDepth || 0) - 1);
+  const [view, arg] = parseHash();
+  if (view === S.view && (arg ?? null) === (S.arg ?? null)) return;
+  go(view || 'zadania', arg, 'pop');
+});
+export function go(view, arg, mode){
   if (!V[view]) view = 'zadania';
+  const prevScroll = mode === 'pop' ? null : 0;
   S.view = view; S.arg = arg === undefined ? null : arg;
   const v = V[view];
   $('main').innerHTML = v.html();
   if (v.parts) for (const id in v.parts){ const el = $(id); if (el) el.innerHTML = v.parts[id](); }
   if (v.after) v.after();
+  if (v.nav === 'wiecej' && !$('main').querySelector('.backlink')){ const h = $('main').querySelector('.vhead > div'); if (h) h.insertAdjacentHTML('afterbegin', `<a href="#" class="hint backlink" data-act="back" data-to="wiecej">← Wstecz</a>`); }
   const navKey = v.nav || view;
   document.querySelectorAll('#rail [data-go]').forEach(b => { if (b.dataset.go === navKey) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); });
   refreshChrome();
-  try { localStorage.setItem('crm-view', ['kampania','nowa'].includes(view) ? 'zadania' : view); } catch(e){}
-  const h = '#' + view + (S.arg ? '/' + S.arg : ''); if (location.hash !== h) history.replaceState(null, '', h);
-  window.scrollTo({top:0});
+  try { localStorage.setItem('crm-view', ['kampania','nowa','osoba'].includes(view) ? 'zadania' : view); } catch(e){}
+  const h = '#' + view + (S.arg ? '/' + enc(S.arg) : '');
+  if (mode !== 'pop') afterNav(() => {
+    if (location.hash === h) return;
+    if (mode === 'replace') history.replaceState(null, '', h);
+    else { history.pushState(null, '', h); S.navDepth = (S.navDepth || 0) + 1; }
+  });
+  if (prevScroll !== null) window.scrollTo({top:0});
 }
 export function refreshChrome(){
   if (!S.me) return;
@@ -188,10 +212,15 @@ export function refreshChrome(){
 export function openModal(html, onMount){
   $('layer').innerHTML = `<div class="modal" id="modal"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
   $('modal').addEventListener('mousedown', ev => { if (ev.target.id === 'modal') closeLayer(); });
+  layerOpened();
   if (onMount) onMount();
   const first = $('layer').querySelector('input:not([type=checkbox]),select,textarea'); if (first) first.focus();
 }
-export function closeLayer(){ $('layer').innerHTML = ''; S.drawer = null; }
+export function closeLayer(){
+  $('layer').innerHTML = ''; S.drawer = null;
+  if (layerHist){ layerHist = false; popWait++; clearTimeout(popT); popT = setTimeout(flushPop, 700); history.back(); }
+}
+export { layerOpened };
 export function optList(pairs, sel){ return pairs.map(([v,l]) => `<option value="${esc(v)}"${String(v)===String(sel ?? '')?' selected':''}>${esc(l)}</option>`).join(''); }
 export function peopleOpts(sel, emptyLabel, ids){
   const list = (ids || [...S.profiles.keys()]).map(id => S.profiles.get(id)).filter(p => p && p.status === 'active').sort((a,b) => (a.full_name||a.email).localeCompare(b.full_name||b.email,'pl'));

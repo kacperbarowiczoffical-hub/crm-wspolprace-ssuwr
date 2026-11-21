@@ -1,7 +1,7 @@
 import { S, V, A, $, esc, fold, todayISO, addDays, fmtDay, emailsIn, igHandle, socialUrl, toast, copyText, STAGES, STAGES_UI, stageGroup, STAGE, CH, SECTORS, VARS, PRESETS,
   isAdmin, isLead, ledTeams, canEditTeam, teamMembers, inTeamScope, pname, pfirst, go, refresh, refreshNow, openModal, closeLayer, optList, peopleOpts, stagePill, chTag,
   updateFirm, setTarget, allTpls, tplById, sb, dbErr, pathPrompt, parsePathAnswer, loadAll } from './core.js';
-import { campRow, pathHTML, tState, catsFor, promptModal, blockedFirms, canClaim } from './views-work.js';
+import { campRow, pathHTML, tState, catsFor, promptModal, blockedFirms, canClaim, targetTools } from './views-work.js';
 
 /* ================= KAMPANIE ================= */
 V.kampanie = {
@@ -48,8 +48,8 @@ V.kampania = {
       if (!ts.length) return `<tr><td colspan="5" class="hint">Brak firm dla tych filtrów.</td></tr>`;
       const team = c.team_id && S.teams.get(c.team_id), ids = team ? teamMembers(team) : null;
       return ts.slice(0, 500).map(t => { const f = S.firms.get(t.firm_id); if (!f) return '';
-        return `<tr><td><a href="#" data-act="openFirm" data-id="${esc(f.id)}">${esc(f.name)}</a>${pathHTML(c,t)}</td><td>${t.assignee ? esc(pname(t.assignee)) : '<span class="pill s-">w puli</span>'}</td><td>${esc(tState(t))}</td><td>${stagePill(f)}</td>
-          <td>${!t.assignee && c.status === 'active' && canClaim(c) ? `<button class="btn sm gold" data-act="claimT" data-c="${esc(c.id)}" data-f="${esc(f.id)}">Biorę</button>` : ''}${t.state === 'active' && t.assignee === S.me.id ? `<button class="btn sm pri" data-act="doStep" data-c="${esc(c.id)}" data-f="${esc(f.id)}">Kontakt</button>` : ''}${m ? ` <select class="reassign" data-f="${esc(f.id)}" aria-label="Przypisz" style="width:auto;padding:3px 6px;font-size:12px">${peopleOpts(t.assignee, 'przypisz…', ids)}</select>` : ''}</td></tr>`; }).join('');
+        return `<tr><td><a href="#" data-act="openFirm" data-id="${esc(f.id)}">${esc(f.name)}</a>${pathHTML(c,t)}</td><td>${t.assignee ? `<a href="#" data-go="osoba" data-arg="${esc(t.assignee)}">${esc(pname(t.assignee))}</a>` : '<span class="pill s-">w puli</span>'}</td><td>${esc(tState(t))}</td><td>${stagePill(f)}</td>
+          <td>${!t.assignee && c.status === 'active' && canClaim(c) ? `<button class="btn sm gold" data-act="claimT" data-c="${esc(c.id)}" data-f="${esc(f.id)}">Biorę</button>` : ''}${t.state === 'active' && t.assignee === S.me.id ? `<button class="btn sm pri" data-act="doStep" data-c="${esc(c.id)}" data-f="${esc(f.id)}">Kontakt</button>` : ''}${targetTools(c, f.id, t)}${m ? ` <select class="reassign" data-f="${esc(f.id)}" aria-label="Przypisz" style="width:auto;padding:3px 6px;font-size:12px">${peopleOpts(t.assignee, 'przypisz…', ids)}</select>` : ''}</td></tr>`; }).join('');
     }
   },
   after(){

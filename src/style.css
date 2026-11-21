@@ -248,3 +248,14 @@ details.more>*:not(summary){margin-top:8px}
 .catbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:10px 0}
 .catbar .field{min-width:200px;flex:1;max-width:320px;margin:0}
 @media (max-width:760px){.band-in{flex-wrap:wrap}.gsearch{order:5;flex-basis:100%;max-width:none;margin:10px 0 0}}
+
+/* profile członków */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.pcard{border-left-color:var(--accent)}
+.pnums{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+.pnums b{font-family:var(--f-mono);font-weight:500;color:var(--ink,inherit);font-size:16px}
+.pcontact{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;min-width:0}
+.pcontact a{overflow-wrap:anywhere}
+.pcontact.big{font-size:15px;gap:8px 18px}
+.av-lg .av{width:48px;height:48px;font-size:16px}
+.backlink{display:inline-block;padding:6px 0;text-decoration:none}

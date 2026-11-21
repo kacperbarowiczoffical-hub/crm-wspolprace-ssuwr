@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { S, V, A, $, esc, enc, fold, keyOf, bigrams, dice, pySlug, todayISO, fmtDay, emailsIn, igHandle, socialUrl, cityOf, domainOf, shortUrl, splitContact,
   toast, copyText, STAGE, STAGES, CH, SECTORS, ROLES, ST_SHEET, isAdmin, isLead, myTeams, teamMembers, isTeamLeader, teamLeaders, canEditTeam, inTeamScope, pname, avatarHTML, go, refresh, refreshNow,
   openModal, closeLayer, optList, peopleOpts, stagePill, sb, dbErr, prep, rebuildIndex, CFG } from './core.js';
-import { catsFor, firmCard, myQueue } from './views-work.js';
+import { catsFor, firmCard, myQueue, actLine } from './views-work.js';
 
 /* ================= WIĘCEJ ================= */
 V.wiecej = {
@@ -11,6 +11,7 @@ V.wiecej = {
       ['pulpit','Statystyki komisji','Wyniki z ostatnich 30 dni i ostatnie kontakty'],
       ['narzedzia','Szukanie nowych firm','Sprawdź, czy firma jest w bazie, znajdź nowe firmy i maile'],
       ['szablony','Szablony wiadomości','Gotowe maile i wiadomości do social mediów'],
+      ['ludzie','Profile członków','Kto ile wysłał maili, kontakt do każdej osoby'],
       ['struktura','Zespoły i ludzie', isAdmin() ? 'Dodawaj osoby, twórz zespoły, nadawaj role' : isLead() ? 'Twórz zespoły i dodawaj do nich ludzi' : 'Kto jest w jakim zespole'],
       ['profil','Mój profil','Imię, podpis maila, hasło'],
       ...(isAdmin() ? [['ustawienia','Ustawienia','Import firm z Excela, eksport, domeny logowania']] : [])
@@ -30,7 +31,7 @@ V.struktura = {
       <div id="sPending"></div>
       <div class="box"><h3>Administratorzy główni</h3><div class="row" id="sAdmins"></div></div>
       <div class="grid g2" id="sTeams"></div>
-      <div class="box"><h3>Wszyscy członkowie</h3><div class="tw"><table class="t"><thead><tr><th>Osoba</th><th>Rola</th><th>Zespoły</th><th>Prowadzi firm</th><th>Zadania dziś</th><th>Kontakty (30 dni)</th><th>Współprace</th>${isAdmin() ? '<th></th>' : ''}</tr></thead><tbody id="sPeople"></tbody></table></div></div>`;
+      <div class="box"><h3>Wszyscy członkowie</h3><div class="tw"><table class="t"><thead><tr><th>Osoba</th><th>Rola</th><th>Zespoły</th><th>Prowadzi firm</th><th>Zadania dziś</th><th>Maile (łącznie)</th><th>Kontakty (30 dni)</th><th>Współprace</th>${isAdmin() ? '<th></th>' : ''}</tr></thead><tbody id="sPeople"></tbody></table></div></div>`;
   },
   parts:{
     sPending(){
@@ -62,13 +63,14 @@ V.struktura = {
       const since = new Date(Date.now() - 30*864e5).toISOString(), t = todayISO(), q = myQueue(null);
       return [...S.profiles.values()].filter(p => p.status === 'active').sort((a,b) => (a.full_name||a.email).localeCompare(b.full_name||b.email,'pl')).map(p => {
         const teams = myTeams(p.id).map(x => x.name).join(', ');
-        return `<tr><td><span class="row" style="flex-wrap:nowrap">${avatarHTML(p.id)}<span><b>${esc(p.full_name || '—')}</b><br><span class="hint">${esc(p.email)}</span></span></span></td><td>${esc(ROLES[p.role])}${p.fn ? `<div class="hint">${esc(p.fn)}</div>` : ''}</td><td>${esc(teams || '—')}</td>
-          <td>${S.list.filter(f => f.owner_id === p.id).length}</td><td>${q.filter(x => x.t.assignee === p.id && x.t.due <= t).length}</td><td>${S.acts.filter(a => a.by === p.id && a.type === 'contact' && a.at >= since).length}</td><td>${S.list.filter(f => f.owner_id === p.id && f.stage === 'wspolpraca').length}</td>
+        return `<tr><td><span class="row" style="flex-wrap:nowrap">${avatarHTML(p.id)}<span><a href="#" data-go="osoba" data-arg="${esc(p.id)}"><b>${esc(p.full_name || '—')}</b></a><br><span class="hint">${esc(p.email)}</span></span></span></td><td>${esc(ROLES[p.role])}${p.fn ? `<div class="hint">${esc(p.fn)}</div>` : ''}</td><td>${esc(teams || '—')}</td>
+          <td>${S.list.filter(f => f.owner_id === p.id).length}</td><td>${q.filter(x => x.t.assignee === p.id && x.t.due <= t).length}</td><td>${S.ui.pst ? ((S.ui.pst.m.get(p.id) || {}).mail || 0) : '…'}</td><td>${S.acts.filter(a => a.by === p.id && a.type === 'contact' && a.at >= since).length}</td><td>${S.list.filter(f => f.owner_id === p.id && f.stage === 'wspolpraca').length}</td>
           ${isAdmin() ? `<td style="white-space:nowrap">${p.id !== S.me.id ? `<select data-role-set="${esc(p.id)}" style="width:auto;padding:3px 6px;font-size:12px">${optList(Object.entries(ROLES), p.role)}</select> <button class="btn sm ghost" data-act="userPass" data-id="${esc(p.id)}">Nowe hasło</button> <button class="btn sm ghost danger" data-act="block" data-id="${esc(p.id)}">Zablokuj</button>` : ''}</td>` : ''}</tr>`;
       }).join('');
     }
   },
   after(){
+    loadPeopleStats().then(() => { if (S.view === 'struktura') refreshNow(); }).catch(e => console.warn(e));
     $('main').addEventListener('change', async e => {
       const s = e.target.closest('[data-role-set]'); if (!s) return;
       const { error } = await sb.from('profiles').update({role:s.value}).eq('id', s.dataset.roleSet); if (error) return dbErr(error);
@@ -153,6 +155,96 @@ A.teamSave = async () => {
   closeLayer(); refreshNow(); toast('Zapisano zespół');
 };
 A.teamDel = async () => { const { error } = await sb.from('teams').delete().eq('id', S.ui.tef); if (error) return dbErr(error); S.teams.delete(S.ui.tef); closeLayer(); refreshNow(); toast('Usunięto zespół'); };
+
+/* ================= PROFILE CZŁONKÓW ================= */
+/* liczniki z całej historii (nie tylko z ostatnich 1500 wpisów w pamięci) */
+export async function loadPeopleStats(force){
+  const c = S.ui.pst; if (c && !force && Date.now() - c.t < 60000) return c;
+  let rows = [], from = 0;
+  for (;;){
+    const { data, error } = await sb.from('activities').select('by,type,channels,at').in('type', ['contact','reply']).order('at', {ascending:false}).range(from, from + 999);
+    if (error) throw error; rows = rows.concat(data); if (data.length < 1000) break; from += 1000;
+  }
+  const since = new Date(Date.now() - 30*864e5).toISOString(), wk = new Date(Date.now() - 7*864e5).toISOString(), m = new Map();
+  for (const a of rows){
+    if (!a.by) continue; let x = m.get(a.by);
+    if (!x) m.set(a.by, x = {mail:0, mail30:0, mail7:0, dm:0, call:0, contact:0, contact30:0, reply:0, last:''});
+    if (!x.last || a.at > x.last) x.last = a.at;
+    if (a.type === 'reply') { x.reply++; continue; }
+    const ch = a.channels || [];
+    x.contact++; if (a.at >= since) x.contact30++;
+    if (ch.includes('email')) { x.mail++; if (a.at >= since) x.mail30++; if (a.at >= wk) x.mail7++; }
+    if (ch.some(k => CH[k] && CH[k].kind === 'dm')) x.dm++;
+    if (ch.some(k => CH[k] && CH[k].kind === 'call')) x.call++;
+  }
+  return S.ui.pst = {t:Date.now(), m};
+}
+const pstat = id => (S.ui.pst && S.ui.pst.m.get(id)) || null;
+function personContacts(p){
+  const ig = String(p.instagram || '').replace(/^@/, '');
+  return [
+    p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : '',
+    p.phone ? `<a href="tel:${esc(String(p.phone).replace(/\s+/g, ''))}">☎ ${esc(p.phone)}</a>` : '',
+    ig ? `<a href="https://www.instagram.com/${enc(ig)}/" target="_blank" rel="noopener">IG @${esc(ig)}</a>` : ''
+  ].filter(Boolean).join('');
+}
+V.ludzie = {
+  nav:'wiecej',
+  html(){
+    return `<div class="vhead"><div><h1>Profile członków</h1><p class="sub">Ile kto wysłał maili i jak się z nim skontaktować. Kliknij osobę, żeby zobaczyć szczegóły.</p></div></div>
+      <input type="search" id="lQ" class="bigsearch" value="${esc(S.ui.lq || '')}" placeholder="Szukaj osoby…" aria-label="Szukaj osoby">
+      <div class="pgrid" id="lList"></div>`;
+  },
+  parts:{ lList(){
+    const w = fold(S.ui.lq || '').trim().split(/\s+/).filter(Boolean);
+    const ps = [...S.profiles.values()].filter(p => p.status === 'active' && w.every(x => fold([p.full_name, p.email, p.fn].join(' ')).includes(x)));
+    ps.sort((a,b) => ((pstat(b.id) || {}).mail || 0) - ((pstat(a.id) || {}).mail || 0) || (a.full_name || a.email).localeCompare(b.full_name || b.email, 'pl'));
+    if (!ps.length) return `<div class="empty">Nikogo nie znaleziono.</div>`;
+    return ps.map(p => { const x = pstat(p.id), teams = myTeams(p.id).map(t => t.name).join(', ');
+      return `<div class="card click pcard" data-go="osoba" data-arg="${esc(p.id)}">
+        <div class="row" style="flex-wrap:nowrap">${avatarHTML(p.id)}<div style="min-width:0"><b>${esc(p.full_name || p.email)}</b><div class="hint">${esc(p.fn || ROLES[p.role] || '')}${teams ? ' · ' + esc(teams) : ''}</div></div></div>
+        <div class="pnums"><span><b>${x ? x.mail : '…'}</b> maili</span><span><b>${x ? x.mail30 : '…'}</b> w 30 dni</span><span><b>${S.list.filter(f => f.owner_id === p.id).length}</b> firm</span></div>
+        <div class="pcontact">${personContacts(p)}</div></div>`; }).join('');
+  } },
+  after(){
+    $('lQ').addEventListener('input', e => { S.ui.lq = e.target.value; $('lList').innerHTML = V.ludzie.parts.lList(); });
+    loadPeopleStats().then(() => { if (S.view === 'ludzie') $('lList').innerHTML = V.ludzie.parts.lList(); }).catch(e => { console.warn(e); toast('Nie udało się policzyć maili.'); });
+  }
+};
+V.osoba = {
+  nav:'wiecej',
+  html(){
+    const p = S.profiles.get(S.arg); if (!p) return `<div class="empty">Nie znaleziono osoby. <a href="#" data-go="ludzie">Wróć</a></div>`;
+    const teams = myTeams(p.id).map(t => t.name).join(', ');
+    return `<div class="vhead"><div><a href="#" class="hint backlink" data-act="back" data-to="ludzie">← Wstecz</a>
+        <div class="row" style="flex-wrap:nowrap;margin-top:6px"><span class="av-lg">${avatarHTML(p.id)}</span><div><h1>${esc(p.full_name || p.email)}</h1><p class="sub">${esc(ROLES[p.role] || '')}${p.fn ? ' · ' + esc(p.fn) : ''}${teams ? ' · zespoły: ' + esc(teams) : ''}</p></div></div></div>
+        ${p.id === S.me.id ? `<button class="btn" data-go="profil">Edytuj mój profil</button>` : ''}</div>
+      <div class="box"><h3>Kontakt</h3><div class="pcontact big">${personContacts(p) || '<span class="hint">Brak danych kontaktowych.</span>'}</div></div>
+      <div class="grid g4" id="oKpi"></div>
+      <div class="box"><h3>Ostatnie działania</h3><div class="feed" id="oFeed"></div></div>`;
+  },
+  parts:{
+    oKpi(){
+      const id = S.arg, x = pstat(id), d = v => x ? v : '…', t = todayISO(), mine = S.list.filter(f => f.owner_id === id);
+      return [[d(x && x.mail),'wysłanych maili (łącznie)'],[d(x && x.mail7) + ' / ' + d(x && x.mail30),'maili: 7 dni / 30 dni'],[d(x && x.dm),'wiadomości w social mediach'],[d(x && x.call),'telefonów i wizyt'],
+        [d(x && x.reply),'zapisanych odpowiedzi'],[mine.length,'firm prowadzi'],[mine.filter(f => f.stage === 'wspolpraca').length,'współprac'],[myQueue(id).filter(q => q.t.due <= t).length,'zadań na dziś']]
+        .map(([v,l]) => `<div class="box kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+    },
+    oFeed(){
+      const r = S.ui.pacts && S.ui.pacts.id === S.arg ? S.ui.pacts.rows : null;
+      if (!r) return `<div class="hint">Wczytuję…</div>`;
+      return r.length ? r.slice(0, 40).map(a => actLine(a, true)).join('') : `<div class="hint">Ta osoba nie ma jeszcze żadnych działań.</div>`;
+    }
+  },
+  after(){
+    const id = S.arg; if (!S.profiles.has(id)) return;
+    loadPeopleStats().then(() => { if (S.view === 'osoba' && S.arg === id && $('oKpi')) $('oKpi').innerHTML = V.osoba.parts.oKpi(); }).catch(e => console.warn(e));
+    sb.from('activities').select('*').eq('by', id).order('at', {ascending:false}).limit(40).then(({data, error}) => {
+      if (error) return console.warn(error);
+      S.ui.pacts = {id, rows:data}; if (S.view === 'osoba' && S.arg === id && $('oFeed')) $('oFeed').innerHTML = V.osoba.parts.oFeed();
+    });
+  }
+};
 
 /* ================= PROFIL ================= */
 V.profil = {
