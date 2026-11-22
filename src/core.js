@@ -278,7 +278,8 @@ export async function setTarget(cid, fid, patch){
 async function fetchAll(table, order){
   let out = [], from = 0;
   for (;;){
-    let q = sb.from(table).select('*'); if (order) q = q.order(order[0], {ascending: order[1] !== 'desc'});
+    // stała kolejność (aż do klucza głównego) – bez niej stronicowanie gubi/duplikuje wiersze zmienione w bazie
+    let q = sb.from(table).select('*'); for (const o of order || []) q = q.order(o[0], {ascending: o[1] !== 'desc'});
     const { data, error } = await q.range(from, from + 999);
     if (error) throw error;
     out = out.concat(data); if (data.length < 1000) break; from += 1000;
@@ -287,10 +288,10 @@ async function fetchAll(table, order){
 }
 export async function loadAll(){
   const [profiles, teams, tm, firms, camps, targets, tpls, replies, acts, cats] = await Promise.all([
-    fetchAll('profiles'), fetchAll('teams'), fetchAll('team_members'), fetchAll('firms', ['name','asc']), fetchAll('campaigns'),
-    fetchAll('campaign_targets'), fetchAll('templates'), fetchAll('reply_contents'),
+    fetchAll('profiles', [['id']]), fetchAll('teams', [['id']]), fetchAll('team_members', [['team_id'],['user_id']]), fetchAll('firms', [['name'],['id']]), fetchAll('campaigns', [['id']]),
+    fetchAll('campaign_targets', [['campaign_id'],['firm_id']]), fetchAll('templates', [['id']]), fetchAll('reply_contents', [['activity_id']]),
     sb.from('activities').select('*').order('at', {ascending:false}).limit(1500).then(r => { if (r.error) throw r.error; return r.data; }),
-    fetchAll('categories').catch(() => [])
+    fetchAll('categories', [['name']]).catch(() => [])
   ]);
   S.cats = new Map(cats.map(c => [c.name, c]));
   S.profiles = new Map(profiles.map(p => [p.id, p]));
