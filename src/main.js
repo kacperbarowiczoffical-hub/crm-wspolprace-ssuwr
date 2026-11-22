@@ -134,4 +134,19 @@ async function startSession(session){
   go(V[start] && start !== 'pulpit' ? start : 'zadania', arg, 'replace');
   if (!S.me.full_name) { toast('Uzupełnij swój profil'); go('profil'); }
 }
+/* ---------- automatyczna aktualizacja: gdy na serwerze jest nowa wersja, strona sama się przeładuje ---------- */
+const myBuild = (document.querySelector('script[type=module][src*="/assets/"]') || {}).src || '';
+async function checkUpdate(){
+  if (!myBuild) return;
+  try {
+    const html = await (await fetch('/index.html?v=' + Date.now(), {cache:'no-store'})).text();
+    const m = html.match(/src="([^"]*\/assets\/[^"]+\.js)"/); if (!m) return;
+    if (new URL(m[1], location.origin).href === myBuild) return;
+    if ($('layer').innerHTML) { setTimeout(checkUpdate, 15000); return; } // nie przerywamy otwartego okna
+    location.reload();
+  } catch(e){}
+}
+setInterval(checkUpdate, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+window.addEventListener('pageshow', e => { if (e.persisted) checkUpdate(); });
 boot();
