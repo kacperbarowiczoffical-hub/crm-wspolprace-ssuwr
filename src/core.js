@@ -258,6 +258,13 @@ export async function logAct(row){
   if (!S.acts.some(a => a.id === data.id)) S.acts.unshift(data);
   refresh(); return data;
 }
+/* odśwież z bazy jedną firmę i jej przypisania w kampaniach (po wzięciu / oddaniu firmy) */
+export async function reloadFirm(fid){
+  const [{ data:f }, { data:ts }] = await Promise.all([sb.from('firms').select('*').eq('id', fid).maybeSingle(), sb.from('campaign_targets').select('*').eq('firm_id', fid)]);
+  if (f) S.firms.set(f.id, prep(f));
+  for (const t of ts || []) { if (!S.targets.has(t.campaign_id)) S.targets.set(t.campaign_id, new Map()); S.targets.get(t.campaign_id).set(t.firm_id, t); }
+  rebuildIndex(); refresh();
+}
 export async function setTarget(cid, fid, patch){
   if (!S.targets.has(cid)) S.targets.set(cid, new Map());
   const m = S.targets.get(cid); const cur = Object.assign({campaign_id:cid, firm_id:fid}, m.get(fid) || {}, patch);
@@ -298,14 +305,18 @@ export async function loadAll(){
 }
 export function subscribeRealtime(){
   sb.channel('crm-all').on('postgres_changes', {event:'*', schema:'public'}, p => {
-    const row = p.new && Object.keys(p.new).length ? p.new : null, old = p.old || {};
+    const del = p.eventType === 'DELETE', old = p.old || {};
+    const row = !del && p.new && Object.keys(p.new).length ? p.new : null;
+    if (!del && !row) return; // niepełne zdarzenie – nie usuwamy niczego z widoku
+    // UPDATE może nie zawierać wszystkich kolumn (np. długich tekstów) – dlatego scalamy z tym, co już mamy
+    const merge = (map, key) => Object.assign({}, map.get(key) || {}, row);
     switch (p.table){
-      case 'firms': if (row) S.firms.set(row.id, prep(row)); else S.firms.delete(old.id); rebuildIndex(); break;
+      case 'firms': if (row) S.firms.set(row.id, prep(merge(S.firms, row.id))); else S.firms.delete(old.id); rebuildIndex(); break;
       case 'profiles': if (row) { S.profiles.set(row.id, row); if (row.id === S.me.id) { const was = S.me.status; S.me = row; if (was !== row.status) location.reload(); } } else S.profiles.delete(old.id); break;
       case 'teams': if (row) S.teams.set(row.id, row); else S.teams.delete(old.id); break;
       case 'team_members': if (p.eventType === 'DELETE') S.tm = S.tm.filter(x => !(x.team_id === old.team_id && x.user_id === old.user_id)); else { S.tm = S.tm.filter(x => !(x.team_id === row.team_id && x.user_id === row.user_id)); S.tm.push(row); } break;
       case 'campaigns': if (row) S.camps.set(row.id, row); else { S.camps.delete(old.id); S.targets.delete(old.id); } break;
-      case 'campaign_targets': if (row) { if (!S.targets.has(row.campaign_id)) S.targets.set(row.campaign_id, new Map()); S.targets.get(row.campaign_id).set(row.firm_id, row); } else if (old.campaign_id && S.targets.has(old.campaign_id)) S.targets.get(old.campaign_id).delete(old.firm_id); break;
+      case 'campaign_targets': if (row) { if (!S.targets.has(row.campaign_id)) S.targets.set(row.campaign_id, new Map()); const m = S.targets.get(row.campaign_id); m.set(row.firm_id, Object.assign({}, m.get(row.firm_id) || {}, row)); } else if (old.campaign_id && S.targets.has(old.campaign_id)) S.targets.get(old.campaign_id).delete(old.firm_id); break;
       case 'activities': if (row) { const i = S.acts.findIndex(a => a.id === row.id); if (i >= 0) S.acts[i] = row; else S.acts.unshift(row); } else S.acts = S.acts.filter(a => a.id !== old.id); break;
       case 'categories': if (row) S.cats.set(row.name, row); else S.cats.delete(old.name); break;
       case 'templates': if (row) S.tpls.set(row.id, row); else S.tpls.delete(old.id); break;

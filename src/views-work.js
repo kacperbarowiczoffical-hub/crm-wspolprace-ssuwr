@@ -1,7 +1,7 @@
 import { S, V, A, $, esc, enc, fold, keyOf, slug, rid, todayISO, addDays, fmtDay, fmtWhen, dueLabel, emailsIn, igHandle, socialUrl, cityOf, shortUrl,
   toast, copyText, openUrl, STAGES, STAGES_UI, stageGroup, STAGE, CH, ACTL, OUTCOMES, SECTORS, ROLES, isAdmin, isLead, isActive, myTeams, isMyScope, firmTeams, pname, pfirst, avatarHTML,
-  go, refresh, refreshNow, openModal, closeLayer, layerOpened, optList, peopleOpts, stagePill, chTag, updateFirm, insertFirm, logAct, setTarget,
-  allTpls, tplById, fillVars, outlookUrl, ccEmail, AI_TOOLS, contactPrompt, parseAiAnswer, sb, dbErr, splitContact } from './core.js';
+  go, refresh, refreshNow, openModal, closeLayer, layerOpened, optList, peopleOpts, stagePill, chTag, updateFirm, insertFirm, logAct, setTarget, reloadFirm,
+  allTpls, tplById, fillVars, outlookUrl, ccEmail, AI_TOOLS, contactPrompt, parseAiAnswer, sb, dbErr, splitContact, rebuildIndex } from './core.js';
 
 /* ================= wspólne ================= */
 /* firmy, które są w innej (niezarchiwizowanej) kampanii i nie odpowiedziały – nie trafiają do kolejnych */
@@ -155,6 +155,7 @@ export async function claimTarget(cid, fid){
   if (!data) { toast('Ktoś już wziął tę firmę.'); const { data:row } = await sb.from('campaign_targets').select('*').eq('campaign_id', cid).eq('firm_id', fid).maybeSingle(); if (row) S.targets.get(cid).set(fid, row); refreshNow(); return false; }
   const t = S.targets.get(cid).get(fid); t.assignee = S.me.id; if (t.due < todayISO()) t.due = todayISO();
   const f = S.firms.get(fid); if (f) f.owner_id = S.me.id;
+  reloadFirm(fid).catch(e => console.warn(e));
   return true;
 }
 A.claimT = async el => { el.disabled = true; if (await claimTarget(el.dataset.c, el.dataset.f)) { logAct({type:'claim', firm_id:el.dataset.f, campaign_id:el.dataset.c, summary:'Wziął(-ęła) firmę z puli kampanii'}); toast('Firma jest Twoja – znajdziesz ją w „Na dziś”'); refreshNow(); } else el.disabled = false; };
@@ -213,6 +214,8 @@ export async function releaseTarget(cid, fid){
   if (error) { toast(error.message); return false; }
   if (!data) { toast('Ta firma jest już w puli.'); return false; }
   t.assignee = null; const f = S.firms.get(fid); if (f && f.owner_id === who) f.owner_id = null;
+  rebuildIndex(); refreshNow();
+  reloadFirm(fid).catch(e => console.warn(e));
   return true;
 }
 A.releaseT = async el => {
